@@ -21,6 +21,4 @@ This repository contains DevOps configuration files:
 - `kubernetes/` - Production Deployment Manifests
 
 ## Author
-Fatih Yılmaz - 221201001 - İTÜ BLG403
-
-3. "Commit new file" tıkla
+Fatih Yılmaz - 221201001 - İRÜ BLG403
