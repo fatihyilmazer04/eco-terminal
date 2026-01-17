@@ -34,16 +34,3 @@ services:
 
 volumes:
   postgres_data:
-```
-```
-4. Commit message: "Add docker-compose configuration"
-5. "Commit new file" tıkla
-```
-
----
-
-## **3️⃣ Dockerfile Ekle**
-```
-1. "Add file" → "Create new file"
-2. Dosya adı: Dockerfile
-3. Aşağıdaki kodu yapıştır:
