@@ -44,16 +44,3 @@ jobs:
       run: |
         echo "Deploying to production..."
         echo "✅ Deployment successful!"
-```
-```
-4. Commit message: "Add CI/CD workflow"
-5. "Commit new file" tıkla
-```
-
----
-
-## **2️⃣ Docker Compose Ekle**
-```
-1. Yine "Add file" → "Create new file"
-2. Dosya adı: docker-compose.yml
-3. Aşağıdaki kodu yapıştır:
