@@ -1,0 +1,97 @@
+spring:
+  application:
+    name: eco-terminal-backend
+
+  # ── Datasource ──────────────────────────────────────────────────────────────
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ecoterminal}
+    username: ${DB_USER:ecoterminal}
+    password: ${DB_PASSWORD:ecoterminal123}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+
+  # ── JPA / Hibernate ─────────────────────────────────────────────────────────
+  jpa:
+    hibernate:
+      # Flyway şemayı yönetiyor; Hibernate sadece doğruluyor (production-safe)
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+
+  # ── Flyway ──────────────────────────────────────────────────────────────────
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: true
+
+# ── JWT ─────────────────────────────────────────────────────────────────────
+jwt:
+  # Üretimde mutlaka güçlü, rastgele 256-bit Base64 secret kullanın
+  secret: ${JWT_SECRET:eco-terminal-super-secret-key-must-be-at-least-256-bits-long-for-hs256}
+  access-token-expiration: 900000        # 15 dakika (ms)
+  refresh-token-expiration: 604800000    # 7 gün (ms)
+
+# ── CORS ────────────────────────────────────────────────────────────────────
+cors:
+  allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:3000}
+
+# ── AI Service ──────────────────────────────────────────────────────────────
+ai-service:
+  base-url: ${AI_SERVICE_URL:http://localhost:5000}
+
+# ── Server ──────────────────────────────────────────────────────────────────
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+# ── Actuator ────────────────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# ── Loglama ─────────────────────────────────────────────────────────────────
+logging:
+  level:
+    com.ecoterminal: DEBUG
+    org.springframework.security: INFO
+    org.flywaydb: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# ── Scheduling (Faz 5-6 için) ───────────────────────────────────────────────
+spring.task.scheduling:
+  pool:
+    size: 4
+
+# ── Swagger / OpenAPI (Faz 8) ────────────────────────────────────────────────
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+  info:
+    title: Eco-Terminal API
+    description: Akıllı Havalimanı Yoğunluk ve Enerji Yönetim Sistemi
+    version: 1.0.0

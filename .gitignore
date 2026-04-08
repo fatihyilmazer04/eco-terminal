@@ -1,0 +1,43 @@
+# =============================================================================
+# Eco-Terminal .gitignore
+# =============================================================================
+
+# Hassas bilgiler — asla commit edilmez
+.env
+*.env.local
+*.env.production
+google-services.json
+firebase-adminsdk*.json
+
+# Java / Maven
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+backend/*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Python / AI Service
+ai-service/__pycache__/
+ai-service/*.pyc
+ai-service/.venv/
+ai-service/venv/
+ai-service/model/*.h5
+ai-service/model/*.keras
+ai-service/*.log
+
+# Docker
+*.pid
+
+# OS
+Thumbs.db

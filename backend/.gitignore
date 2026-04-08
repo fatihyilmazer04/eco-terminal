@@ -1,0 +1,9 @@
+target/
+*.class
+*.jar
+*.war
+*.ear
+.mvn/wrapper/maven-wrapper.jar
+src/main/resources/application-local.yml
+src/main/resources/firebase-service-account.json
+*.iml
