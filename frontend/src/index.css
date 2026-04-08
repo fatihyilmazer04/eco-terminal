@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-gray-900 text-gray-50 font-sans;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Scrollbar dark tema */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-800;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-600 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-500;
+  }
+}
+
+@layer components {
+  /* Eco-Terminal ortak bileşen sınıfları */
+  .eco-card {
+    @apply bg-gray-800 border border-gray-700 rounded-xl p-6 shadow-lg;
+  }
+
+  .eco-btn-primary {
+    @apply bg-eco-green hover:bg-green-500 text-gray-900 font-semibold
+           px-4 py-2 rounded-lg transition-colors duration-200 disabled:opacity-50;
+  }
+
+  .eco-btn-secondary {
+    @apply bg-gray-700 hover:bg-gray-600 text-gray-100 font-medium
+           px-4 py-2 rounded-lg transition-colors duration-200;
+  }
+
+  .eco-input {
+    @apply w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5
+           text-gray-100 placeholder-gray-400 focus:outline-none
+           focus:border-eco-green focus:ring-1 focus:ring-eco-green
+           transition-colors duration-200;
+  }
+
+  .eco-label {
+    @apply block text-sm font-medium text-gray-300 mb-1;
+  }
+
+  /* Yoğunluk renk yardımcıları */
+  .density-low    { @apply text-eco-green; }
+  .density-medium { @apply text-eco-orange; }
+  .density-high   { @apply text-eco-red; }
+
+  .density-bg-low    { @apply bg-green-500/20 border-green-500/30; }
+  .density-bg-medium { @apply bg-yellow-500/20 border-yellow-500/30; }
+  .density-bg-high   { @apply bg-red-500/20 border-red-500/30; }
+}
