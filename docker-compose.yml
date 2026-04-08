@@ -1,0 +1,152 @@
+version: "3.9"
+
+# Tüm servisler bu ağ üzerinden haberleşir
+networks:
+  eco-net:
+    driver: bridge
+
+# Kalıcı veri depolama
+volumes:
+  postgres-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+services:
+
+  # ── PostgreSQL 15 ──────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: eco-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-ecoterminal}
+      POSTGRES_USER: ${DB_USER:-ecoterminal}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ecoterminal123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - eco-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ecoterminal} -d ${DB_NAME:-ecoterminal}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Redis (opsiyonel — Faz sonrası cache için hazır) ──────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: eco-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - eco-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  # ── Spring Boot Backend ────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: eco-backend
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ecoterminal}
+      DB_USER: ${DB_USER:-ecoterminal}
+      DB_PASSWORD: ${DB_PASSWORD:-ecoterminal123}
+      JWT_SECRET: ${JWT_SECRET:-eco-terminal-super-secret-key-must-be-at-least-256-bits-long-for-hs256}
+      AI_SERVICE_URL: http://ai-service:5000
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-dev}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - eco-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+  # ── React Frontend (Nginx ile serve) ──────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: eco-frontend
+    environment:
+      VITE_API_BASE_URL: ${API_BASE_URL:-http://localhost:8080}
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - eco-net
+    restart: unless-stopped
+
+  # ── Python Flask AI Servisi ────────────────────────────────────────────────
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: eco-ai-service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ecoterminal}
+      DB_USER: ${DB_USER:-ecoterminal}
+      DB_PASSWORD: ${DB_PASSWORD:-ecoterminal123}
+      FLASK_ENV: ${FLASK_ENV:-development}
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - eco-net
+    restart: unless-stopped
+
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: eco-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - eco-net
+    restart: unless-stopped
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: eco-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin123}
+      GF_SERVER_HTTP_PORT: 3001
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3001"
+    depends_on:
+      - prometheus
+    networks:
+      - eco-net
+    restart: unless-stopped

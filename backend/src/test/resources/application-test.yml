@@ -1,0 +1,52 @@
+# =============================================================================
+# Test profili — Testcontainers PostgreSQL ile override edilir
+# @DynamicPropertySource DataSource URL'ini runtime'da set eder
+# =============================================================================
+
+spring:
+  datasource:
+    # URL, username, password @DynamicPropertySource ile override edilir
+    driver-class-name: org.postgresql.Driver
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # Scheduling testlerde devre dışı
+  task:
+    scheduling:
+      pool:
+        size: 1
+
+# JWT test secret (min 32 chars)
+jwt:
+  secret: test_secret_key_minimum_32_characters_long_for_testing_purposes
+  access-token-expiration: 900000
+  refresh-token-expiration: 604800000
+
+# AI servisi mock (testlerde çağrılmayacak)
+ai-service:
+  base-url: http://localhost:5000
+
+# Loglama seviyesini azalt
+logging:
+  level:
+    com.ecoterminal: INFO
+    org.springframework.security: WARN
+    org.flywaydb: INFO
+    org.testcontainers: WARN
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
