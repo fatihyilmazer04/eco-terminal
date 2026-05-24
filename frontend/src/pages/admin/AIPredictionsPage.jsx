@@ -55,7 +55,7 @@ function ForecastModal({ prediction, onClose }) {
     setEnergyError(null)
     setEnergyData(null)
     axiosInstance
-      .get(`/api/ai/zone-forecast?zoneId=${prediction.zoneId}&type=ENERGY&range=${energyRange}`)
+      .get(`/api/ai/predictions/zone-forecast?zoneId=${prediction.zoneId}&type=ENERGY&range=${energyRange}`)
       .then(r => setEnergyData(r.data.data))
       .catch(() => setEnergyError('Tahmin verisi alınamadı'))
       .finally(() => setEnergyLoading(false))
@@ -73,12 +73,34 @@ function ForecastModal({ prediction, onClose }) {
     conf:    parseFloat((p.confidence * 100).toFixed(0)),
   }))
 
+  // Client-side fallback (deterministic) — backend veri yokken
+  function clientFallback(range, zoneId) {
+    const labels = {
+      '24H': Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`),
+      '1W':  ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'],
+      '1M':  ['1. Hafta', '2. Hafta', '3. Hafta', '4. Hafta'],
+    }
+    return (labels[range] ?? labels['24H']).map((label, i) => ({
+      label,
+      primaryValue:   parseFloat((12 + ((zoneId * 3 + i * 7) % 15)).toFixed(1)),
+      secondaryValue: parseFloat((300 + ((zoneId * 5 + i * 11) % 300)).toFixed(0)),
+      status:         'NORMAL',
+    }))
+  }
+
   // Energy chart data
-  const energyPoints = energyData?.dataPoints?.map(p => ({
-    label: p.label,
-    kwh:   p.primaryValue ?? 0,
-    lux:   p.secondaryValue ?? 400,
-  })) ?? []
+  const rawPoints = energyData?.dataPoints ?? energyData?.data?.dataPoints ?? []
+  const useFallback = rawPoints.length === 0
+  const sourcePoints = useFallback
+    ? clientFallback(energyRange, prediction.zoneId)
+    : rawPoints
+
+  const energyPoints = sourcePoints.map(p => ({
+    label:  p.label,
+    kwh:    Number(p.primaryValue ?? 0),
+    lux:    Number(p.secondaryValue ?? 400),
+    status: p.status ?? 'NORMAL',
+  }))
 
   const avgKwh = energyPoints.length
     ? energyPoints.reduce((s, p) => s + p.kwh, 0) / energyPoints.length
@@ -263,12 +285,13 @@ function ForecastModal({ prediction, onClose }) {
                 </div>
               ) : energyError ? (
                 <div className="h-40 flex items-center justify-center text-red-400 text-sm">{energyError}</div>
-              ) : energyPoints.length === 0 ? (
-                <div className="h-40 flex items-center justify-center text-gray-500 text-sm">
-                  Enerji tahmin verisi bulunamadı.
-                </div>
               ) : (
                 <>
+                  {useFallback && (
+                    <div className="px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
+                      Bu bölge için enerji verisi henüz yok, tahmini değerler gösteriliyor.
+                    </div>
+                  )}
                   <div className="bg-gray-900/50 rounded-lg p-3">
                     <ResponsiveContainer width="100%" height={180}>
                       <ComposedChart data={energyPoints} margin={{ top: 5, right: 15, left: -5, bottom: 5 }}>
@@ -297,13 +320,15 @@ function ForecastModal({ prediction, onClose }) {
                       </thead>
                       <tbody className="divide-y divide-gray-700/50">
                         {energyPoints.map((p, i) => {
-                          const status = getEnergyStatus(p.kwh)
+                          const statusCls = p.status === 'YÜKSEK' ? 'text-red-400'
+                                          : p.status === 'DÜŞÜK'  ? 'text-eco-green'
+                                          : 'text-gray-400'
                           return (
                             <tr key={i} className="hover:bg-gray-700/30 transition-colors">
                               <td className="px-3 py-2 text-gray-300">{p.label}</td>
-                              <td className="px-3 py-2 text-right text-gray-300">{Number(p.kwh).toFixed(2)}</td>
-                              <td className="px-3 py-2 text-right text-gray-300">{p.lux}</td>
-                              <td className={`px-3 py-2 text-right font-medium ${status.cls}`}>{status.label}</td>
+                              <td className="px-3 py-2 text-right text-gray-300">{p.kwh.toFixed(2)}</td>
+                              <td className="px-3 py-2 text-right text-gray-300">{Math.round(p.lux)}</td>
+                              <td className={`px-3 py-2 text-right font-medium ${statusCls}`}>{p.status}</td>
                             </tr>
                           )
                         })}

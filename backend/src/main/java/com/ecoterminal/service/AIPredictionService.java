@@ -1,12 +1,16 @@
 package com.ecoterminal.service;
 
 import com.ecoterminal.exception.AiServiceException;
+import com.ecoterminal.exception.BusinessException;
 import com.ecoterminal.model.dto.AIPredictionResponse;
+import com.ecoterminal.model.dto.EnergyForecastPoint;
 import com.ecoterminal.model.dto.ForecastDataPoint;
 import com.ecoterminal.model.dto.ZoneForecastResponse;
 import com.ecoterminal.model.entity.AIPrediction;
+import com.ecoterminal.model.entity.EnvironmentalMetric;
 import com.ecoterminal.model.entity.Zone;
 import com.ecoterminal.repository.AIPredictionRepository;
+import com.ecoterminal.repository.EnvironmentalMetricRepository;
 import com.ecoterminal.repository.ZoneRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,23 +27,21 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AIPredictionService {
 
-    private final AIPredictionClient  aiClient;
-    private final AIPredictionRepository predRepository;
-    private final ZoneRepository          zoneRepository;
+    private final AIPredictionClient          aiClient;
+    private final AIPredictionRepository      predRepository;
+    private final ZoneRepository              zoneRepository;
+    private final EnvironmentalMetricRepository metricRepo;
 
     // ── Scheduled Refresh ───────────────────────────────────────────────────
 
-    /**
-     * Her 5 dakikada bir AI servisinden tahminleri çeker ve DB'ye kaydeder.
-     * HIGH risk varsa uyarı logu yazar (Faz 6'da NotificationService bağlanacak).
-     */
-    @Scheduled(fixedDelay = 300_000)   // 5 dakika
+    @Scheduled(fixedDelay = 300_000)
     @Transactional
     public void fetchAndStorePredictions() {
         log.info("AI tahmin yenileme başladı...");
@@ -48,7 +50,6 @@ public class AIPredictionService {
             _storePredictions(predictions);
             log.info("AI tahminleri güncellendi: {} bölge", predictions.size());
 
-            // HIGH risk bölge uyarısı
             predictions.stream()
                     .filter(p -> "HIGH".equals(p.riskLevel()))
                     .forEach(p -> log.warn(
@@ -62,9 +63,6 @@ public class AIPredictionService {
 
     // ── Manuel Refresh ──────────────────────────────────────────────────────
 
-    /**
-     * Admin tarafından manuel tetiklenebilir — POST /api/ai/predictions/refresh
-     */
     @Transactional
     public List<AIPredictionResponse> refreshPredictions() {
         List<AIPredictionResponse> predictions = aiClient.getAllPredictions();
@@ -75,7 +73,6 @@ public class AIPredictionService {
 
     // ── Okuma ───────────────────────────────────────────────────────────────
 
-    /** DB'deki son tahminler (her bölge için en yeni bir kayıt) */
     @Transactional(readOnly = true)
     public List<AIPredictionResponse> getPredictionsForAdmin() {
         return predRepository.findLatestPerZone()
@@ -84,7 +81,6 @@ public class AIPredictionService {
                 .toList();
     }
 
-    /** HIGH riskli bölgelerin tahminleri */
     @Transactional(readOnly = true)
     public List<AIPredictionResponse> getHighRiskZones() {
         return predRepository.findByRiskLevelOrderByGeneratedAtDesc("HIGH")
@@ -93,10 +89,6 @@ public class AIPredictionService {
                 .toList();
     }
 
-    /**
-     * Tek bölge tahmini.
-     * Son 5 dakika içinde DB'de kayıt varsa onu döndürür, yoksa AI servisine çağrı yapar.
-     */
     @Transactional
     public AIPredictionResponse getPredictionForZone(Long zoneId) {
         Instant fiveMinutesAgo = Instant.now().minus(5, ChronoUnit.MINUTES);
@@ -107,38 +99,28 @@ public class AIPredictionService {
             return AIPredictionResponse.from(recent.get(0));
         }
 
-        // Cache miss → AI servisi çağır
         AIPredictionResponse fresh = aiClient.getPredictionForZone(zoneId);
         _storeOne(fresh);
         return fresh;
     }
 
-    // ── Zone Forecast (çok horizonlu) ──────────────────────────────────────
+    // ── Zone Forecast (Yoğunluk — çok horizonlu) ───────────────────────────
 
     private static final DateTimeFormatter HM_FMT = DateTimeFormatter.ofPattern("HH:mm");
 
-    /**
-     * Belirli bir bölge için kısa + uzun vadeli tahmin üretir.
-     * Flask'tan 30/60/120 dk + 6/12/24 saat verileri alınır.
-     * Flask erişilemezse DB'den son tahmin kullanılarak trend bazlı projeksiyon yapılır.
-     */
     @Transactional(readOnly = true)
     public ZoneForecastResponse getZoneForecast(Long zoneId) {
         Zone zone = zoneRepository.findById(zoneId)
-                .orElseThrow(() -> com.ecoterminal.exception.BusinessException.notFound("Bölge"));
+                .orElseThrow(() -> BusinessException.notFound("Bölge"));
 
-        // DB'den son tahmin al
         AIPredictionResponse latest = getPredictionForZone(zoneId);
         double baseLoad = latest.predictedLoad() != null ? latest.predictedLoad() : 0.5;
         String trend    = latest.trend()          != null ? latest.trend()         : "STABLE";
         float  conf     = latest.confidence()     != null ? latest.confidence()    : 0.75f;
 
-        // Kısa vadeli: 30, 60, 120 dk
         List<ForecastDataPoint> shortTerm = buildForecast(baseLoad, trend, conf,
                 new int[]{30, 60, 120}, "min");
-
-        // Uzun vadeli: 6, 12, 24 saat
-        List<ForecastDataPoint> longTerm = buildForecast(baseLoad, trend, conf,
+        List<ForecastDataPoint> longTerm  = buildForecast(baseLoad, trend, conf,
                 new int[]{360, 720, 1440}, "hour");
 
         String confStr = String.format("%.0f%%", conf * 100);
@@ -148,7 +130,8 @@ public class AIPredictionService {
                 zoneId, zone.getZoneName(),
                 latest.riskLevel(), baseLoad,
                 shortTerm, longTerm,
-                confStr, rec
+                confStr, rec,
+                null   // dataPoints — OCCUPANCY tipinde null
         );
     }
 
@@ -156,22 +139,16 @@ public class AIPredictionService {
                                                     int[] minuteOffsets, String unit) {
         List<ForecastDataPoint> points = new ArrayList<>();
         for (int i = 0; i < minuteOffsets.length; i++) {
-            int mins  = minuteOffsets[i];
-            // Trend bazlı ilerletme — her saatte ±0.05
+            int mins    = minuteOffsets[i];
             double hours  = mins / 60.0;
             double drift  = "INCREASING".equals(trend) ?  0.04 * hours
-                          : "DECREASING".equals(trend) ? -0.04 * hours
-                          : 0.0;
-            // Uzun vadede giderek daha az kesin
+                          : "DECREASING".equals(trend) ? -0.04 * hours : 0.0;
             double uncertainty = 0.015 * i;
-            double load = Math.min(1.0, Math.max(0.0, baseLoad + drift + (Math.random() - 0.5) * uncertainty));
+            double load = Math.min(1.0, Math.max(0.0,
+                    baseLoad + drift + (Math.random() - 0.5) * uncertainty));
             double conf = Math.max(0.3, baseConf - 0.05 * i);
-
-            String label = unit.equals("min")
-                    ? "+" + mins + " dk"
-                    : "+" + (mins / 60) + " sa";
-
-            String risk = load >= 0.85 ? "HIGH" : load >= 0.60 ? "MEDIUM" : "LOW";
+            String label = unit.equals("min") ? "+" + mins + " dk" : "+" + (mins / 60) + " sa";
+            String risk  = load >= 0.85 ? "HIGH" : load >= 0.60 ? "MEDIUM" : "LOW";
             points.add(new ForecastDataPoint(label, load, risk, conf));
         }
         return points;
@@ -189,10 +166,143 @@ public class AIPredictionService {
         return "Yoğunluk kabul edilebilir seviyede — rutin takip önerilir";
     }
 
+    // ── Zone Forecast (Enerji) ──────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public ZoneForecastResponse getEnergyForecast(Long zoneId, String range) {
+        Zone zone = zoneRepository.findById(zoneId)
+                .orElseThrow(() -> BusinessException.notFound("Bölge"));
+
+        Instant since = switch (range) {
+            case "1W" -> Instant.now().minus(7,  ChronoUnit.DAYS);
+            case "1M" -> Instant.now().minus(28, ChronoUnit.DAYS);
+            default   -> Instant.now().minus(24, ChronoUnit.HOURS);
+        };
+
+        List<EnvironmentalMetric> metrics = metricRepo.findTimeSeriesByZoneId(zoneId, since);
+
+        List<EnergyForecastPoint> dataPoints = metrics.isEmpty()
+                ? buildFallbackEnergyPoints(zoneId, range, zone.getMaxCapacity())
+                : switch (range) {
+                    case "1W" -> buildWeeklyEnergyPoints(metrics);
+                    case "1M" -> buildMonthlyEnergyPoints(metrics);
+                    default   -> buildHourlyEnergyPoints(metrics);
+                };
+
+        return new ZoneForecastResponse(
+                zoneId, zone.getZoneName(),
+                null, 0.0,
+                List.of(), List.of(),
+                null, null,
+                dataPoints
+        );
+    }
+
+    private List<EnergyForecastPoint> buildHourlyEnergyPoints(List<EnvironmentalMetric> metrics) {
+        Map<Integer, List<EnvironmentalMetric>> byHour = metrics.stream()
+                .collect(Collectors.groupingBy(
+                        m -> LocalDateTime.ofInstant(m.getRecordedAt(), ZoneOffset.UTC).getHour()));
+
+        double avgKwh = metrics.stream()
+                .mapToDouble(m -> m.getEnergyKwh() != null ? m.getEnergyKwh() : 0)
+                .average().orElse(10.0);
+
+        List<EnergyForecastPoint> points = new ArrayList<>();
+        for (int h = 0; h < 24; h++) {
+            String label = String.format("%02d:00", h);
+            List<EnvironmentalMetric> hm = byHour.getOrDefault(h, List.of());
+            double kwh = hm.stream().mapToDouble(m -> m.getEnergyKwh() != null ? m.getEnergyKwh() : 0)
+                           .average().orElse(0.0);
+            double lux = hm.stream().mapToDouble(m -> m.getLightingLux() != null ? m.getLightingLux() : 400)
+                           .average().orElse(400.0);
+            kwh = Math.round(kwh * 10.0) / 10.0;
+            lux = Math.round(lux);
+            String status = kwh > avgKwh * 1.2 ? "YÜKSEK" : kwh < avgKwh * 0.8 ? "DÜŞÜK" : "NORMAL";
+            points.add(new EnergyForecastPoint(label, kwh, lux, status));
+        }
+        return points;
+    }
+
+    private List<EnergyForecastPoint> buildWeeklyEnergyPoints(List<EnvironmentalMetric> metrics) {
+        String[] dayLabels = {"Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"};
+        Map<Integer, List<EnvironmentalMetric>> byDay = metrics.stream()
+                .collect(Collectors.groupingBy(
+                        m -> LocalDateTime.ofInstant(m.getRecordedAt(), ZoneOffset.UTC)
+                                .getDayOfWeek().getValue())); // 1=Mon...7=Sun
+
+        double avgKwh = metrics.stream()
+                .mapToDouble(m -> m.getEnergyKwh() != null ? m.getEnergyKwh() : 0)
+                .average().orElse(10.0);
+
+        List<EnergyForecastPoint> points = new ArrayList<>();
+        for (int d = 1; d <= 7; d++) {
+            List<EnvironmentalMetric> dm = byDay.getOrDefault(d, List.of());
+            double kwh = dm.stream().mapToDouble(m -> m.getEnergyKwh() != null ? m.getEnergyKwh() : 0)
+                           .average().orElse(0.0);
+            double lux = dm.stream().mapToDouble(m -> m.getLightingLux() != null ? m.getLightingLux() : 400)
+                           .average().orElse(400.0);
+            kwh = Math.round(kwh * 10.0) / 10.0;
+            lux = Math.round(lux);
+            String status = kwh > avgKwh * 1.2 ? "YÜKSEK" : kwh < avgKwh * 0.8 ? "DÜŞÜK" : "NORMAL";
+            points.add(new EnergyForecastPoint(dayLabels[d - 1], kwh, lux, status));
+        }
+        return points;
+    }
+
+    private List<EnergyForecastPoint> buildMonthlyEnergyPoints(List<EnvironmentalMetric> metrics) {
+        String[] weekLabels = {"1. Hafta", "2. Hafta", "3. Hafta", "4. Hafta"};
+        Instant now = Instant.now();
+
+        double avgKwh = metrics.stream()
+                .mapToDouble(m -> m.getEnergyKwh() != null ? m.getEnergyKwh() : 0)
+                .average().orElse(10.0);
+
+        List<EnergyForecastPoint> points = new ArrayList<>();
+        for (int w = 0; w < 4; w++) {
+            Instant start = now.minus((4 - w) * 7L, ChronoUnit.DAYS);
+            Instant end   = now.minus((3 - w) * 7L, ChronoUnit.DAYS);
+            List<EnvironmentalMetric> wm = metrics.stream()
+                    .filter(m -> !m.getRecordedAt().isBefore(start) && m.getRecordedAt().isBefore(end))
+                    .collect(Collectors.toList());
+            double kwh = wm.stream().mapToDouble(m -> m.getEnergyKwh() != null ? m.getEnergyKwh() : 0)
+                           .average().orElse(0.0);
+            double lux = wm.stream().mapToDouble(m -> m.getLightingLux() != null ? m.getLightingLux() : 400)
+                           .average().orElse(400.0);
+            kwh = Math.round(kwh * 10.0) / 10.0;
+            lux = Math.round(lux);
+            String status = kwh > avgKwh * 1.2 ? "YÜKSEK" : kwh < avgKwh * 0.8 ? "DÜŞÜK" : "NORMAL";
+            points.add(new EnergyForecastPoint(weekLabels[w], kwh, lux, status));
+        }
+        return points;
+    }
+
+    private List<EnergyForecastPoint> buildFallbackEnergyPoints(Long zoneId, String range, Integer capacity) {
+        double baseKwh = (capacity == null || capacity <= 100) ? 10.0
+                       : (capacity <= 200) ? 20.0 : 30.0;
+        double avgKwh  = baseKwh + 2.5;
+
+        List<String> labels = switch (range) {
+            case "1W" -> List.of("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz");
+            case "1M" -> List.of("1. Hafta", "2. Hafta", "3. Hafta", "4. Hafta");
+            default   -> IntStream.range(0, 24)
+                                  .mapToObj(h -> String.format("%02d:00", h))
+                                  .collect(Collectors.toList());
+        };
+
+        List<EnergyForecastPoint> points = new ArrayList<>();
+        for (int i = 0; i < labels.size(); i++) {
+            double seed = (zoneId * 13L + (long) i * 7L) % 100L;
+            double kwh  = Math.round((baseKwh + (seed / 100.0) * 5) * 10.0) / 10.0;
+            double lux  = 300 + ((zoneId * 5L + (long) i * 11L) % 300L);
+            String status = kwh > avgKwh * 1.2 ? "YÜKSEK" : kwh < avgKwh * 0.8 ? "DÜŞÜK" : "NORMAL";
+            points.add(new EnergyForecastPoint(labels.get(i), kwh, lux, status));
+        }
+        return points;
+    }
+
     // ── Yardımcı ───────────────────────────────────────────────────────────
 
     private void _storePredictions(List<AIPredictionResponse> predictions) {
-        // Zone map'i tek sorguda çek
         Map<Long, Zone> zoneMap = zoneRepository.findAll()
                 .stream()
                 .collect(Collectors.toMap(Zone::getZoneId, z -> z));
