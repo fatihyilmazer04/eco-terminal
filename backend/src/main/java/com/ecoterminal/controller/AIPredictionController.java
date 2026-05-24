@@ -2,6 +2,7 @@ package com.ecoterminal.controller;
 
 import com.ecoterminal.model.dto.AIPredictionResponse;
 import com.ecoterminal.model.dto.ApiResponse;
+import com.ecoterminal.model.dto.ZoneForecastResponse;
 import com.ecoterminal.service.AIPredictionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,5 +46,12 @@ public class AIPredictionController {
         log.info("Admin manuel tahmin yenileme isteği");
         List<AIPredictionResponse> updated = predictionService.refreshPredictions();
         return ResponseEntity.ok(ApiResponse.ok(updated));
+    }
+
+    /** GET /api/ai/predictions/zone-forecast?zoneId=1 — Çok horizonlu bölge tahmini */
+    @GetMapping("/zone-forecast")
+    public ResponseEntity<ApiResponse<ZoneForecastResponse>> getZoneForecast(
+            @RequestParam Long zoneId) {
+        return ResponseEntity.ok(ApiResponse.ok(predictionService.getZoneForecast(zoneId)));
     }
 }

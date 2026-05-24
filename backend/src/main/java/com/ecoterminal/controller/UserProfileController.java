@@ -2,7 +2,9 @@ package com.ecoterminal.controller;
 
 import com.ecoterminal.model.dto.*;
 import com.ecoterminal.security.UserPrincipal;
+import com.ecoterminal.service.UserManagementService;
 import com.ecoterminal.service.UserProfileService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -13,7 +15,8 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class UserProfileController {
 
-    private final UserProfileService profileService;
+    private final UserProfileService    profileService;
+    private final UserManagementService userManagementService;
 
     /** GET /api/users/profile — profil + cüzdan + tercihler */
     @GetMapping("/profile")
@@ -38,5 +41,14 @@ public class UserProfileController {
             @AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(ApiResponse.ok(
                 profileService.updatePreferences(principal.getUserId(), request)));
+    }
+
+    /** POST /api/users/change-password — şifre değiştirme */
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<String>> changePassword(
+            @Valid @RequestBody ChangePasswordRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        userManagementService.changePassword(principal.getUserId(), request);
+        return ResponseEntity.ok(ApiResponse.ok("Şifre başarıyla güncellendi"));
     }
 }

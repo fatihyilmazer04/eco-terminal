@@ -17,4 +17,8 @@ export const predictionApi = {
   refresh() {
     return axiosInstance.post('/api/ai/predictions/refresh')
   },
+  /** GET /api/ai/predictions/zone-forecast?zoneId=1 — çok horizonlu tahmin */
+  getZoneForecast(zoneId) {
+    return axiosInstance.get('/api/ai/predictions/zone-forecast', { params: { zoneId } })
+  },
 }

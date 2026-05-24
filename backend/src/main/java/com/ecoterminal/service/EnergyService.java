@@ -2,6 +2,8 @@ package com.ecoterminal.service;
 
 import com.ecoterminal.exception.BusinessException;
 import com.ecoterminal.model.dto.EnergyResponse;
+import com.ecoterminal.model.dto.EnergySettingRequest;
+import com.ecoterminal.model.dto.EnergySettingResponse;
 import com.ecoterminal.model.dto.EnergyTrendPoint;
 import com.ecoterminal.model.dto.SavingSuggestion;
 import com.ecoterminal.model.entity.EnvironmentalMetric;
@@ -16,6 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.jdbc.core.JdbcTemplate;
+
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -29,6 +33,7 @@ public class EnergyService {
     private final EnvironmentalMetricRepository metricRepository;
     private final OccupancyReadingRepository    occupancyRepository;
     private final ZoneRepository                zoneRepository;
+    private final JdbcTemplate                  jdbcTemplate;
 
     // ── Tek Bölge Enerji Durumu ──────────────────────────────────────────
 
@@ -138,6 +143,64 @@ public class EnergyService {
                 .map(m -> new EnergyTrendPoint(m.getRecordedAt(), m.getEnergyKwh(), m.getTemp()))
 
                 .toList();
+    }
+
+    // ── Bölge Ayar Güncelleme ────────────────────────────────────────────
+
+    /**
+     * Bölgenin hedef sıcaklık ve aydınlatma seviyesini günceller.
+     * Gerçek uygulamada IoT cihazlarına komut gönderilir; burada DB'ye yeni metrik kaydı eklenir.
+     */
+    @Transactional
+    public EnergySettingResponse updateZoneSettings(Long zoneId, EnergySettingRequest request, Long actorId) {
+        Zone zone = zoneRepository.findById(zoneId)
+                .orElseThrow(() -> BusinessException.notFound("Bölge"));
+
+        EnvironmentalMetric latest = metricRepository.findTopByZoneOrderByRecordedAtDesc(zone)
+                .orElseThrow(() -> BusinessException.notFound("Enerji verisi"));
+
+        Float prevTemp = latest.getTemp();
+        Integer prevLux = latest.getLightingLux();
+
+        // Güncel metriği klonlayıp yeni ayarlarla kaydet
+        EnvironmentalMetric updated = EnvironmentalMetric.builder()
+                .zone(zone)
+                .energyKwh(latest.getEnergyKwh())
+                .temp(request.targetTemp() != null ? request.targetTemp() : prevTemp)
+                .lightingLux(request.targetLightingLux() != null ? request.targetLightingLux() : prevLux)
+                .build();
+        metricRepository.save(updated);
+
+        // Audit log
+        String oldVal = String.format("{\"temp\":%.1f,\"lighting_lux\":%d}", prevTemp != null ? prevTemp : 0f, prevLux != null ? prevLux : 0);
+        String newVal = String.format("{\"temp\":%.1f,\"lighting_lux\":%d}",
+                updated.getTemp() != null ? updated.getTemp() : 0f,
+                updated.getLightingLux() != null ? updated.getLightingLux() : 0);
+        jdbcTemplate.update(
+                "INSERT INTO audit_logs (actor_id, action_type, target_table, target_id, old_value, new_value) " +
+                "VALUES (?, 'ENERGY_SETTING', 'environmental_metrics', ?, ?::jsonb, ?::jsonb)",
+                actorId, zoneId, oldVal, newVal);
+
+        log.info("Enerji ayarı güncellendi: zone={}, sıcaklık {}→{}, aydınlatma {}→{}",
+                zone.getZoneName(), prevTemp, updated.getTemp(), prevLux, updated.getLightingLux());
+
+        String message = buildSettingMessage(prevTemp, updated.getTemp(), prevLux, updated.getLightingLux());
+
+        return new EnergySettingResponse(
+                zoneId, zone.getZoneName(),
+                prevTemp, updated.getTemp(),
+                prevLux, updated.getLightingLux(),
+                message, Instant.now()
+        );
+    }
+
+    private String buildSettingMessage(Float prevTemp, Float newTemp, Integer prevLux, Integer newLux) {
+        List<String> changes = new ArrayList<>();
+        if (newTemp != null && prevTemp != null && !newTemp.equals(prevTemp))
+            changes.add(String.format("Sıcaklık %.1f°C → %.1f°C", prevTemp, newTemp));
+        if (newLux != null && prevLux != null && !newLux.equals(prevLux))
+            changes.add(String.format("Aydınlatma %d → %d lux", prevLux, newLux));
+        return changes.isEmpty() ? "Değişiklik yok" : String.join(", ", changes) + " olarak güncellendi";
     }
 
     // ── Yardımcı ────────────────────────────────────────────────────────

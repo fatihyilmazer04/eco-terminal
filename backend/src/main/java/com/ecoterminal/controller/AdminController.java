@@ -3,14 +3,19 @@ package com.ecoterminal.controller;
 import com.ecoterminal.model.dto.AdminDashboardResponse;
 import com.ecoterminal.model.dto.ApiResponse;
 import com.ecoterminal.model.dto.HourlyDataPoint;
+import com.ecoterminal.model.dto.UpdateUserRequest;
+import com.ecoterminal.model.dto.UserListResponse;
+import com.ecoterminal.security.UserPrincipal;
 import com.ecoterminal.service.AdminDashboardService;
 import com.ecoterminal.service.ReportService;
+import com.ecoterminal.service.UserManagementService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -26,6 +31,7 @@ public class AdminController {
 
     private final AdminDashboardService adminDashboardService;
     private final ReportService         reportService;
+    private final UserManagementService userManagementService;
 
     /**
      * GET /api/admin/dashboard
@@ -58,5 +64,23 @@ public class AdminController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         if (date == null) date = LocalDate.now();
         return ResponseEntity.ok(ApiResponse.ok(reportService.getEnergyReport(date)));
+    }
+
+    // ── Kullanıcı Yönetimi ─────────────────────────────────────────────────────
+
+    /** GET /api/admin/users — tüm kullanıcıları listele */
+    @GetMapping("/users")
+    public ResponseEntity<ApiResponse<List<UserListResponse>>> listUsers() {
+        return ResponseEntity.ok(ApiResponse.ok(userManagementService.getAllUsers()));
+    }
+
+    /** PATCH /api/admin/users/{id} — rol ve durum güncelle */
+    @PatchMapping("/users/{id}")
+    public ResponseEntity<ApiResponse<UserListResponse>> updateUser(
+            @PathVariable Long id,
+            @RequestBody UpdateUserRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                userManagementService.updateUser(id, request, principal.getUserId())));
     }
 }

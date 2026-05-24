@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend
+  ResponsiveContainer, Legend, AreaChart, Area, BarChart, Bar
 } from 'recharts'
 import KpiCard from '../../components/KpiCard'
 import OccupancyCard from '../../components/OccupancyCard'
@@ -11,7 +11,7 @@ import AirportHeatmap from '../../components/AirportHeatmap'
 import HeatmapSummaryCards from '../../components/HeatmapSummaryCards'
 import AIInsightBox from '../../components/AIInsightBox'
 import ZoneDetailPanel from '../../components/ZoneDetailPanel'
-import { adminApi } from '../../api/adminApi'
+import { adminApi, statsApi } from '../../api/adminApi'
 import { predictionApi } from '../../api/predictionApi'
 import { getHeatmapLive } from '../../api/heatmap'
 
@@ -43,6 +43,9 @@ export default function AdminDashboard() {
   const [lastUpdated, setLastUpdated] = useState(null)
   const [heatmapData, setHeatmapData] = useState(null)
   const [selectedZoneId, setSelectedZoneId] = useState(null)
+  const [visitorStats, setVisitorStats] = useState([])
+  const [energyStats,  setEnergyStats]  = useState([])
+  const [cameras,      setCameras]      = useState([])
   const isMounted = useRef(true)
   const trendBuffer = useRef([])  // son 10 snapshot tutarız
 
@@ -85,6 +88,10 @@ export default function AdminDashboard() {
     const heatmapId = setInterval(() => {
       getHeatmapLive().then(d => { if (isMounted.current) setHeatmapData(d) }).catch(() => {})
     }, 60_000)
+    // İstatistikleri bir kez çek
+    statsApi.getVisitors().then(r => { if (isMounted.current) setVisitorStats(r.data.data ?? []) }).catch(() => {})
+    statsApi.getEnergy().then(r => { if (isMounted.current) setEnergyStats(r.data.data ?? []) }).catch(() => {})
+    statsApi.getCameras().then(r => { if (isMounted.current) setCameras(r.data.data ?? []) }).catch(() => {})
     return () => {
       isMounted.current = false
       clearInterval(id)
@@ -272,6 +279,104 @@ export default function AdminDashboard() {
         {/* AI Tahmin Mini Özet */}
         <AIPredictionMini />
       </div>
+
+      {/* ── 24s İstatistikler ──────────────────────────────────────────────── */}
+      {(visitorStats.length > 0 || energyStats.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* 24s Ziyaretçi AreaChart */}
+          {visitorStats.length > 0 && (
+            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+              <h2 className="text-white font-semibold mb-1">24s Ziyaretçi İstatistiği</h2>
+              <p className="text-gray-500 text-xs mb-4">Saatlik ortalama kişi sayısı</p>
+              <ResponsiveContainer width="100%" height={180}>
+                <AreaChart
+                  data={visitorStats.map(p => ({ saat: `${String(p.hour).padStart(2,'0')}:00`, kisi: Math.round(p.value ?? 0) }))}
+                  margin={{ top: 5, right: 5, left: -20, bottom: 5 }}
+                >
+                  <defs>
+                    <linearGradient id="visGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#2ECC71" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#2ECC71" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis dataKey="saat" tick={{ fill: '#9CA3AF', fontSize: 9 }} tickLine={false} interval={3} />
+                  <YAxis tick={{ fill: '#9CA3AF', fontSize: 9 }} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '0.5rem', fontSize: '11px' }}
+                    formatter={v => [`${v} kişi`, 'Ortalama']}
+                  />
+                  <Area type="monotone" dataKey="kisi" stroke="#2ECC71" strokeWidth={2}
+                        fill="url(#visGrad)" dot={false} activeDot={{ r: 3 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* 24s Enerji BarChart */}
+          {energyStats.length > 0 && (
+            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+              <h2 className="text-white font-semibold mb-1">24s Enerji Tüketimi</h2>
+              <p className="text-gray-500 text-xs mb-4">Saatlik toplam kWh</p>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart
+                  data={energyStats.map(p => ({ saat: `${String(p.hour).padStart(2,'0')}:00`, kwh: parseFloat((p.value ?? 0).toFixed(1)) }))}
+                  margin={{ top: 5, right: 5, left: -20, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis dataKey="saat" tick={{ fill: '#9CA3AF', fontSize: 9 }} tickLine={false} interval={3} />
+                  <YAxis tick={{ fill: '#9CA3AF', fontSize: 9 }} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '0.5rem', fontSize: '11px' }}
+                    formatter={v => [`${v} kWh`, 'Enerji']}
+                  />
+                  <Bar dataKey="kwh" fill="#F39C12" fillOpacity={0.8} radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Kamera / Cihaz Durumu */}
+      {cameras.length > 0 && (
+        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+          <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+            <h2 className="text-white font-semibold">Kamera / IoT Cihaz Durumu</h2>
+            <div className="flex gap-3 text-xs">
+              <span className="text-eco-green">{cameras.filter(c => c.status === 'ONLINE').length} Çevrimiçi</span>
+              <span className="text-red-400">{cameras.filter(c => c.status !== 'ONLINE').length} Çevrimdışı</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 p-4">
+            {cameras.map(c => (
+              <div key={c.deviceId}
+                className={`rounded-lg p-2.5 border text-xs ${
+                  c.status === 'ONLINE'
+                    ? 'bg-eco-green/5 border-eco-green/20'
+                    : c.status === 'MAINTENANCE'
+                    ? 'bg-yellow-500/5 border-yellow-500/20'
+                    : 'bg-red-500/5 border-red-500/20'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 mb-1">
+                  <div className={`w-1.5 h-1.5 rounded-full ${
+                    c.status === 'ONLINE' ? 'bg-eco-green' :
+                    c.status === 'MAINTENANCE' ? 'bg-yellow-400' : 'bg-red-400'
+                  }`} />
+                  <span className={`font-medium ${
+                    c.status === 'ONLINE' ? 'text-eco-green' :
+                    c.status === 'MAINTENANCE' ? 'text-yellow-400' : 'text-red-400'
+                  }`}>{c.status}</span>
+                </div>
+                <p className="text-gray-300 font-medium truncate">{c.serialNumber}</p>
+                <p className="text-gray-500 truncate">{c.zoneName}</p>
+                <p className="text-gray-600">{c.deviceType}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Terminal Heatmap Özeti ──────────────────────────────────────────── */}
       {heatmapData && (

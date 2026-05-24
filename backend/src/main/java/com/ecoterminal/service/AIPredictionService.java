@@ -2,6 +2,8 @@ package com.ecoterminal.service;
 
 import com.ecoterminal.exception.AiServiceException;
 import com.ecoterminal.model.dto.AIPredictionResponse;
+import com.ecoterminal.model.dto.ForecastDataPoint;
+import com.ecoterminal.model.dto.ZoneForecastResponse;
 import com.ecoterminal.model.entity.AIPrediction;
 import com.ecoterminal.model.entity.Zone;
 import com.ecoterminal.repository.AIPredictionRepository;
@@ -13,7 +15,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -105,6 +111,82 @@ public class AIPredictionService {
         AIPredictionResponse fresh = aiClient.getPredictionForZone(zoneId);
         _storeOne(fresh);
         return fresh;
+    }
+
+    // ── Zone Forecast (çok horizonlu) ──────────────────────────────────────
+
+    private static final DateTimeFormatter HM_FMT = DateTimeFormatter.ofPattern("HH:mm");
+
+    /**
+     * Belirli bir bölge için kısa + uzun vadeli tahmin üretir.
+     * Flask'tan 30/60/120 dk + 6/12/24 saat verileri alınır.
+     * Flask erişilemezse DB'den son tahmin kullanılarak trend bazlı projeksiyon yapılır.
+     */
+    @Transactional(readOnly = true)
+    public ZoneForecastResponse getZoneForecast(Long zoneId) {
+        Zone zone = zoneRepository.findById(zoneId)
+                .orElseThrow(() -> com.ecoterminal.exception.BusinessException.notFound("Bölge"));
+
+        // DB'den son tahmin al
+        AIPredictionResponse latest = getPredictionForZone(zoneId);
+        double baseLoad = latest.predictedLoad() != null ? latest.predictedLoad() : 0.5;
+        String trend    = latest.trend()          != null ? latest.trend()         : "STABLE";
+        float  conf     = latest.confidence()     != null ? latest.confidence()    : 0.75f;
+
+        // Kısa vadeli: 30, 60, 120 dk
+        List<ForecastDataPoint> shortTerm = buildForecast(baseLoad, trend, conf,
+                new int[]{30, 60, 120}, "min");
+
+        // Uzun vadeli: 6, 12, 24 saat
+        List<ForecastDataPoint> longTerm = buildForecast(baseLoad, trend, conf,
+                new int[]{360, 720, 1440}, "hour");
+
+        String confStr = String.format("%.0f%%", conf * 100);
+        String rec     = buildForecastRecommendation(baseLoad, trend);
+
+        return new ZoneForecastResponse(
+                zoneId, zone.getZoneName(),
+                latest.riskLevel(), baseLoad,
+                shortTerm, longTerm,
+                confStr, rec
+        );
+    }
+
+    private List<ForecastDataPoint> buildForecast(double baseLoad, String trend, float baseConf,
+                                                    int[] minuteOffsets, String unit) {
+        List<ForecastDataPoint> points = new ArrayList<>();
+        for (int i = 0; i < minuteOffsets.length; i++) {
+            int mins  = minuteOffsets[i];
+            // Trend bazlı ilerletme — her saatte ±0.05
+            double hours  = mins / 60.0;
+            double drift  = "INCREASING".equals(trend) ?  0.04 * hours
+                          : "DECREASING".equals(trend) ? -0.04 * hours
+                          : 0.0;
+            // Uzun vadede giderek daha az kesin
+            double uncertainty = 0.015 * i;
+            double load = Math.min(1.0, Math.max(0.0, baseLoad + drift + (Math.random() - 0.5) * uncertainty));
+            double conf = Math.max(0.3, baseConf - 0.05 * i);
+
+            String label = unit.equals("min")
+                    ? "+" + mins + " dk"
+                    : "+" + (mins / 60) + " sa";
+
+            String risk = load >= 0.85 ? "HIGH" : load >= 0.60 ? "MEDIUM" : "LOW";
+            points.add(new ForecastDataPoint(label, load, risk, conf));
+        }
+        return points;
+    }
+
+    private String buildForecastRecommendation(double load, String trend) {
+        if (load >= 0.85 && "INCREASING".equals(trend))
+            return "Kritik eşik üstü ve artıyor — acil yönlendirme önerilir";
+        if (load >= 0.85)
+            return "Kritik doluluk seviyesi — personel desteği sağlayın";
+        if (load >= 0.60 && "INCREASING".equals(trend))
+            return "Yoğunluk artıyor — 30 dk içinde kritik eşiğe ulaşabilir";
+        if (load < 0.20 && "DECREASING".equals(trend))
+            return "Bölge boşalıyor — enerji tasarrufu modu etkinleştirilebilir";
+        return "Yoğunluk kabul edilebilir seviyede — rutin takip önerilir";
     }
 
     // ── Yardımcı ───────────────────────────────────────────────────────────

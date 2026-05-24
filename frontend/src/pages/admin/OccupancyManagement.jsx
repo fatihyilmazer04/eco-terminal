@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-  LineChart, Line, ReferenceLine, Legend
+  LineChart, Line, ReferenceLine
 } from 'recharts'
 import { occupancyApi } from '../../api/occupancyApi'
+import toast from 'react-hot-toast'
 
 const DENSITY_COLOR = {
   LOW:      '#2ECC71',
@@ -13,12 +14,115 @@ const DENSITY_COLOR = {
 }
 const DENSITY_LABEL = { LOW: 'Düşük', MEDIUM: 'Orta', HIGH: 'Yüksek', CRITICAL: 'Kritik' }
 
+// Yoğunluk seviyesine göre satır arka plan rengi
+function rowBg(level) {
+  if (level === 'CRITICAL') return 'bg-red-500/10 hover:bg-red-500/15'
+  if (level === 'HIGH')     return 'bg-orange-500/8 hover:bg-orange-500/12'
+  if (level === 'MEDIUM')   return 'bg-yellow-500/5 hover:bg-yellow-500/10'
+  return 'hover:bg-gray-700/30'
+}
+
+/** Yönlendirme Modalı */
+function RedirectModal({ zone, zones, onClose }) {
+  const [toZoneId, setToZoneId]   = useState('')
+  const [message, setMessage]     = useState(`${zone.zoneName} yoğun — lütfen alternatif bölgeye geçin.`)
+  const [sending, setSending]     = useState(false)
+
+  const alternatives = zones.filter(z => z.zoneId !== zone.zoneId && (z.densityLevel === 'LOW' || z.densityLevel === 'MEDIUM'))
+
+  async function handleSend() {
+    if (!toZoneId) { toast.error('Hedef bölge seçin'); return }
+    setSending(true)
+    try {
+      await occupancyApi.redirect({ fromZoneId: zone.zoneId, toZoneId: Number(toZoneId), message })
+      toast.success(`Yönlendirme gönderildi → ${zones.find(z => z.zoneId === Number(toZoneId))?.zoneName}`)
+      onClose()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Yönlendirme başarısız')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-white font-bold">Yolcu Yönlendir</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-300">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Kaynak bölge */}
+        <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+          <p className="text-xs text-gray-400 mb-0.5">Yoğun Bölge (kaynak)</p>
+          <p className="text-white font-semibold">{zone.zoneName}</p>
+          <p className="text-red-400 text-xs mt-0.5">
+            %{((zone.densityPct ?? 0) * 100).toFixed(0)} doluluk · {zone.currentCount ?? 0} kişi
+          </p>
+        </div>
+
+        {/* Hedef bölge */}
+        <div className="mb-4">
+          <label className="text-xs text-gray-400 mb-1 block">Hedef Bölge</label>
+          {alternatives.length === 0 ? (
+            <p className="text-yellow-400 text-sm">Müsait alternatif bölge bulunamadı.</p>
+          ) : (
+            <select
+              value={toZoneId}
+              onChange={e => setToZoneId(e.target.value)}
+              className="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-lg px-3 py-2
+                         focus:outline-none focus:border-eco-green/50"
+            >
+              <option value="">Seçin...</option>
+              {alternatives.map(z => (
+                <option key={z.zoneId} value={z.zoneId}>
+                  {z.zoneName} (%{((z.densityPct ?? 0) * 100).toFixed(0)} dolu)
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {/* Mesaj */}
+        <div className="mb-5">
+          <label className="text-xs text-gray-400 mb-1 block">Yolcu Mesajı</label>
+          <textarea
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+            rows={3}
+            className="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-lg px-3 py-2
+                       focus:outline-none focus:border-eco-green/50 resize-none"
+          />
+        </div>
+
+        <div className="flex gap-3 justify-end">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 text-sm hover:bg-gray-600 transition-colors">
+            İptal
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={sending || alternatives.length === 0}
+            className="px-4 py-2 rounded-lg bg-eco-green text-gray-900 text-sm font-semibold
+                       hover:bg-eco-green/90 transition-colors disabled:opacity-50"
+          >
+            {sending ? 'Gönderiliyor...' : 'Yönlendir'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function OccupancyManagement() {
-  const [zones, setZones]           = useState([])
+  const [zones, setZones]             = useState([])
   const [trendZoneId, setTrendZoneId] = useState(null)
-  const [trend, setTrend]           = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [error, setError]           = useState(null)
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState(null)
+  const [redirectZone, setRedirectZone] = useState(null)
   const isMounted = useRef(true)
 
   const fetchZones = useCallback(async () => {
@@ -46,7 +150,6 @@ export default function OccupancyManagement() {
 
   const selectedZone = zones.find(z => z.zoneId === trendZoneId)
 
-  // Trend: anlık değerden tek nokta oluştur
   const trendData = selectedZone
     ? [{ time: 'Şimdi', pct: parseFloat(((selectedZone.densityPct ?? 0) * 100).toFixed(1)) }]
     : []
@@ -57,6 +160,11 @@ export default function OccupancyManagement() {
     level: z.densityLevel,
   }))
 
+  // KPI özeti
+  const criticalCount = zones.filter(z => z.densityLevel === 'CRITICAL').length
+  const highCount     = zones.filter(z => z.densityLevel === 'HIGH').length
+  const totalPeople   = zones.reduce((a, z) => a + (z.currentCount ?? 0), 0)
+
   if (loading) return (
     <div className="flex-1 p-6 animate-pulse space-y-6">
       <div className="h-8 w-52 bg-gray-700 rounded" />
@@ -66,6 +174,15 @@ export default function OccupancyManagement() {
 
   return (
     <div className="flex-1 p-6 space-y-6 overflow-auto">
+      {/* Redirect Modal */}
+      {redirectZone && (
+        <RedirectModal
+          zone={redirectZone}
+          zones={zones}
+          onClose={() => setRedirectZone(null)}
+        />
+      )}
+
       {/* Başlık */}
       <div className="flex items-center justify-between">
         <div>
@@ -82,11 +199,27 @@ export default function OccupancyManagement() {
         </button>
       </div>
 
+      {/* Mini KPI'lar */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-gray-800 rounded-xl p-3 border border-gray-700 text-center">
+          <p className="text-2xl font-bold text-white">{totalPeople}</p>
+          <p className="text-xs text-gray-400">Toplam Yolcu</p>
+        </div>
+        <div className={`rounded-xl p-3 border text-center ${criticalCount > 0 ? 'bg-red-500/10 border-red-500/30' : 'bg-gray-800 border-gray-700'}`}>
+          <p className={`text-2xl font-bold ${criticalCount > 0 ? 'text-red-400' : 'text-white'}`}>{criticalCount}</p>
+          <p className="text-xs text-gray-400">Kritik Bölge</p>
+        </div>
+        <div className={`rounded-xl p-3 border text-center ${highCount > 0 ? 'bg-orange-500/10 border-orange-500/30' : 'bg-gray-800 border-gray-700'}`}>
+          <p className={`text-2xl font-bold ${highCount > 0 ? 'text-orange-400' : 'text-white'}`}>{highCount}</p>
+          <p className="text-xs text-gray-400">Yüksek Bölge</p>
+        </div>
+      </div>
+
       {error && (
         <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>
       )}
 
-      {/* BarChart: anlık doluluklar */}
+      {/* BarChart */}
       <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
         <h2 className="text-white font-semibold mb-4">Anlık Bölge Dolulukları (%)</h2>
         <ResponsiveContainer width="100%" height={220}>
@@ -117,7 +250,7 @@ export default function OccupancyManagement() {
         </div>
       </div>
 
-      {/* LineChart: seçili bölge trendi + ReferenceLine */}
+      {/* Bölge Detay Grafiği */}
       <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-white font-semibold">Bölge Doluluk Detayı</h2>
@@ -134,7 +267,7 @@ export default function OccupancyManagement() {
         </div>
 
         {selectedZone && (
-          <div className="flex items-center gap-6 mb-4 text-sm">
+          <div className="flex items-center gap-6 mb-4 text-sm flex-wrap">
             <div>
               <span className="text-gray-500 text-xs">Mevcut Doluluk</span>
               <p className="font-bold" style={{ color: DENSITY_COLOR[selectedZone.densityLevel] }}>
@@ -168,7 +301,6 @@ export default function OccupancyManagement() {
               contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '0.5rem', fontSize: '12px' }}
               formatter={v => [`%${v}`, 'Doluluk']}
             />
-            {/* Kritik eşik — kırmızı yatay çizgi */}
             {selectedZone && (
               <ReferenceLine
                 y={(selectedZone.criticalThreshold ?? 0.85) * 100}
@@ -186,8 +318,9 @@ export default function OccupancyManagement() {
 
       {/* Bölge Tablosu */}
       <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-        <div className="p-4 border-b border-gray-700">
+        <div className="p-4 border-b border-gray-700 flex items-center justify-between">
           <h2 className="text-white font-semibold">Bölge Tablosu</h2>
+          <p className="text-xs text-gray-500">"Yönlendir" — yoğun bölgelerden yolcu yönlendirmek için</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -200,13 +333,15 @@ export default function OccupancyManagement() {
                 <th className="px-4 py-2.5 font-medium text-right">Doluluk%</th>
                 <th className="px-4 py-2.5 font-medium text-right">Seviye</th>
                 <th className="px-4 py-2.5 font-medium text-right">Durum</th>
+                <th className="px-4 py-2.5 font-medium text-right">İşlem</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700/50">
               {zones.map(z => (
                 <tr
                   key={z.zoneId}
-                  className="hover:bg-gray-700/30 transition-colors cursor-pointer"
+                  className={`transition-colors cursor-pointer ${rowBg(z.densityLevel)}
+                    ${trendZoneId === z.zoneId ? 'ring-1 ring-inset ring-eco-green/30' : ''}`}
                   onClick={() => setTrendZoneId(z.zoneId)}
                 >
                   <td className="px-4 py-3 text-white font-medium">{z.zoneName}</td>
@@ -240,6 +375,19 @@ export default function OccupancyManagement() {
                       <span className="text-xs text-yellow-400">Yoğun</span>
                     ) : (
                       <span className="text-xs text-eco-green">Normal</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+                    {(z.densityPct ?? 0) >= 0.60 ? (
+                      <button
+                        onClick={() => setRedirectZone(z)}
+                        className="text-xs px-2.5 py-1 rounded-lg bg-eco-green/10 border border-eco-green/30
+                                   text-eco-green hover:bg-eco-green/20 transition-colors"
+                      >
+                        Yönlendir
+                      </button>
+                    ) : (
+                      <span className="text-xs text-gray-600">—</span>
                     )}
                   </td>
                 </tr>
