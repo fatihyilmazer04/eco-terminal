@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-  LineChart, Line, ReferenceLine
+  LineChart, Line,
 } from 'recharts'
 import { occupancyApi } from '../../api/occupancyApi'
+import axiosInstance from '../../api/axiosInstance'
 import toast from 'react-hot-toast'
 
 const DENSITY_COLOR = {
@@ -14,7 +15,6 @@ const DENSITY_COLOR = {
 }
 const DENSITY_LABEL = { LOW: 'Düşük', MEDIUM: 'Orta', HIGH: 'Yüksek', CRITICAL: 'Kritik' }
 
-// Yoğunluk seviyesine göre satır arka plan rengi
 function rowBg(level) {
   if (level === 'CRITICAL') return 'bg-red-500/10 hover:bg-red-500/15'
   if (level === 'HIGH')     return 'bg-orange-500/8 hover:bg-orange-500/12'
@@ -22,13 +22,143 @@ function rowBg(level) {
   return 'hover:bg-gray-700/30'
 }
 
+function formatTime(isoString) {
+  try {
+    const d = new Date(isoString)
+    return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`
+  } catch {
+    return isoString
+  }
+}
+
+/** 24 Saatlik Doluluk Geçmişi Paneli */
+function ZoneHistoryPanel({ zone, onClose }) {
+  const [data, setData]       = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError]     = useState(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    axiosInstance.get(`/api/heatmap/history?zone_id=${zone.zoneId}&hours=24`)
+      .then(res => {
+        const raw = res.data.data ?? []
+        setData(raw.map(p => ({
+          label: formatTime(p.time),
+          pct:   parseFloat(((p.densityPct ?? 0) * 100).toFixed(1)),
+          count: p.peopleCount ?? 0,
+        })))
+      })
+      .catch(() => setError('Veri yüklenemedi'))
+      .finally(() => setLoading(false))
+  }, [zone.zoneId])
+
+  const avg     = data.length ? (data.reduce((s, p) => s + p.pct, 0) / data.length).toFixed(1) : null
+  const peak    = data.length ? data.reduce((a, b) => a.pct >= b.pct ? a : b) : null
+  const current = data.length ? data[data.length - 1].pct : null
+
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null
+    return (
+      <div className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs">
+        <p className="text-gray-300 mb-0.5">{label}</p>
+        <p className="text-eco-green font-semibold">%{payload[0].value} doluluk</p>
+        <p className="text-gray-400">{payload[0].payload.count} kişi</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-4 border border-eco-green/30 shadow-lg">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-white font-semibold">
+          {zone.zoneName} — Son 24 Saatlik Doluluk
+        </h2>
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-300 transition-colors">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-40">
+          <div className="w-8 h-8 border-2 border-eco-green border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center h-40 text-red-400 text-sm">{error}</div>
+      ) : data.length === 0 ? (
+        <div className="flex items-center justify-center h-40 text-gray-500 text-sm">Veri bulunamadı</div>
+      ) : (
+        <>
+          <ResponsiveContainer width="100%" height={180}>
+            <LineChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+              <XAxis
+                dataKey="label"
+                tick={{ fill: '#9CA3AF', fontSize: 10 }}
+                tickLine={false}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                tick={{ fill: '#9CA3AF', fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                domain={[0, 100]}
+                tickFormatter={v => `${v}%`}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <Line
+                type="monotone"
+                dataKey="pct"
+                stroke="#2ECC71"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 5 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+
+          <div className="flex gap-6 mt-3 text-sm border-t border-gray-700 pt-3">
+            {avg !== null && (
+              <div>
+                <span className="text-gray-500 text-xs block">Ortalama</span>
+                <span className="text-white font-medium">%{avg}</span>
+              </div>
+            )}
+            {peak && (
+              <div>
+                <span className="text-gray-500 text-xs block">Peak</span>
+                <span className="text-orange-400 font-medium">%{peak.pct} ({peak.label})</span>
+              </div>
+            )}
+            {current !== null && (
+              <div>
+                <span className="text-gray-500 text-xs block">Şu an</span>
+                <span className="font-medium" style={{ color: DENSITY_COLOR[zone.densityLevel] }}>
+                  %{current}
+                </span>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 /** Yönlendirme Modalı */
 function RedirectModal({ zone, zones, onClose }) {
-  const [toZoneId, setToZoneId]   = useState('')
-  const [message, setMessage]     = useState(`${zone.zoneName} yoğun — lütfen alternatif bölgeye geçin.`)
-  const [sending, setSending]     = useState(false)
+  const [toZoneId, setToZoneId] = useState('')
+  const [message, setMessage]   = useState(`${zone.zoneName} yoğun — lütfen alternatif bölgeye geçin.`)
+  const [sending, setSending]   = useState(false)
 
-  const alternatives = zones.filter(z => z.zoneId !== zone.zoneId && (z.densityLevel === 'LOW' || z.densityLevel === 'MEDIUM'))
+  // Aynı zone_type'a sahip, farklı, müsait bölgeler
+  const alternatives = zones.filter(z =>
+    z.zoneId !== zone.zoneId &&
+    z.zoneType === zone.zoneType &&
+    (z.densityLevel === 'LOW' || z.densityLevel === 'MEDIUM')
+  )
 
   async function handleSend() {
     if (!toZoneId) { toast.error('Hedef bölge seçin'); return }
@@ -69,7 +199,7 @@ function RedirectModal({ zone, zones, onClose }) {
         <div className="mb-4">
           <label className="text-xs text-gray-400 mb-1 block">Hedef Bölge</label>
           {alternatives.length === 0 ? (
-            <p className="text-yellow-400 text-sm">Müsait alternatif bölge bulunamadı.</p>
+            <p className="text-yellow-400 text-sm">Bu alan türünde alternatif bölge bulunmuyor.</p>
           ) : (
             <select
               value={toZoneId}
@@ -100,7 +230,8 @@ function RedirectModal({ zone, zones, onClose }) {
         </div>
 
         <div className="flex gap-3 justify-end">
-          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 text-sm hover:bg-gray-600 transition-colors">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 text-sm hover:bg-gray-600 transition-colors">
             İptal
           </button>
           <button
@@ -118,10 +249,10 @@ function RedirectModal({ zone, zones, onClose }) {
 }
 
 export default function OccupancyManagement() {
-  const [zones, setZones]             = useState([])
-  const [trendZoneId, setTrendZoneId] = useState(null)
-  const [loading, setLoading]         = useState(true)
-  const [error, setError]             = useState(null)
+  const [zones, setZones]               = useState([])
+  const [selectedZoneId, setSelectedZoneId] = useState(null)
+  const [loading, setLoading]           = useState(true)
+  const [error, setError]               = useState(null)
   const [redirectZone, setRedirectZone] = useState(null)
   const isMounted = useRef(true)
 
@@ -131,7 +262,6 @@ export default function OccupancyManagement() {
       const data = res.data.data?.zones ?? []
       if (isMounted.current) {
         setZones(data)
-        if (!trendZoneId && data.length > 0) setTrendZoneId(data[0].zoneId)
         setError(null)
       }
     } catch (err) {
@@ -139,7 +269,7 @@ export default function OccupancyManagement() {
     } finally {
       if (isMounted.current) setLoading(false)
     }
-  }, [trendZoneId])
+  }, [])
 
   useEffect(() => {
     isMounted.current = true
@@ -148,11 +278,11 @@ export default function OccupancyManagement() {
     return () => { isMounted.current = false; clearInterval(id) }
   }, [fetchZones])
 
-  const selectedZone = zones.find(z => z.zoneId === trendZoneId)
+  function toggleZone(zoneId) {
+    setSelectedZoneId(prev => prev === zoneId ? null : zoneId)
+  }
 
-  const trendData = selectedZone
-    ? [{ time: 'Şimdi', pct: parseFloat(((selectedZone.densityPct ?? 0) * 100).toFixed(1)) }]
-    : []
+  const selectedZone = zones.find(z => z.zoneId === selectedZoneId)
 
   const barData = zones.map(z => ({
     name:  z.zoneName.length > 9 ? z.zoneName.slice(0, 9) + '…' : z.zoneName,
@@ -160,7 +290,6 @@ export default function OccupancyManagement() {
     level: z.densityLevel,
   }))
 
-  // KPI özeti
   const criticalCount = zones.filter(z => z.densityLevel === 'CRITICAL').length
   const highCount     = zones.filter(z => z.densityLevel === 'HIGH').length
   const totalPeople   = zones.reduce((a, z) => a + (z.currentCount ?? 0), 0)
@@ -219,7 +348,7 @@ export default function OccupancyManagement() {
         <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>
       )}
 
-      {/* BarChart */}
+      {/* BarChart — Anlık Bölge Dolulukları */}
       <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
         <h2 className="text-white font-semibold mb-4">Anlık Bölge Dolulukları (%)</h2>
         <ResponsiveContainer width="100%" height={220}>
@@ -250,77 +379,21 @@ export default function OccupancyManagement() {
         </div>
       </div>
 
-      {/* Bölge Detay Grafiği */}
-      <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-white font-semibold">Bölge Doluluk Detayı</h2>
-          <select
-            value={trendZoneId ?? ''}
-            onChange={e => setTrendZoneId(Number(e.target.value))}
-            className="bg-gray-700 border border-gray-600 text-gray-300 text-sm rounded-lg px-3 py-1.5
-                       focus:outline-none focus:border-eco-green/50"
-          >
-            {zones.map(z => (
-              <option key={z.zoneId} value={z.zoneId}>{z.zoneName}</option>
-            ))}
-          </select>
-        </div>
-
-        {selectedZone && (
-          <div className="flex items-center gap-6 mb-4 text-sm flex-wrap">
-            <div>
-              <span className="text-gray-500 text-xs">Mevcut Doluluk</span>
-              <p className="font-bold" style={{ color: DENSITY_COLOR[selectedZone.densityLevel] }}>
-                %{((selectedZone.densityPct ?? 0) * 100).toFixed(0)}
-              </p>
-            </div>
-            <div>
-              <span className="text-gray-500 text-xs">Seviye</span>
-              <p className="font-medium text-white">{DENSITY_LABEL[selectedZone.densityLevel]}</p>
-            </div>
-            <div>
-              <span className="text-gray-500 text-xs">Kritik Eşik</span>
-              <p className="font-medium text-red-400">
-                %{((selectedZone.criticalThreshold ?? 0.85) * 100).toFixed(0)}
-              </p>
-            </div>
-            <div>
-              <span className="text-gray-500 text-xs">Kapasite</span>
-              <p className="font-medium text-white">{selectedZone.currentCount} / {selectedZone.maxCapacity}</p>
-            </div>
-          </div>
-        )}
-
-        <ResponsiveContainer width="100%" height={160}>
-          <LineChart data={trendData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis dataKey="time" tick={{ fill: '#9CA3AF', fontSize: 11 }} tickLine={false} />
-            <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} tickLine={false} axisLine={false}
-                   domain={[0, 100]} tickFormatter={v => `${v}%`} />
-            <Tooltip
-              contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '0.5rem', fontSize: '12px' }}
-              formatter={v => [`%${v}`, 'Doluluk']}
-            />
-            {selectedZone && (
-              <ReferenceLine
-                y={(selectedZone.criticalThreshold ?? 0.85) * 100}
-                stroke="#E74C3C"
-                strokeDasharray="4 2"
-                label={{ value: 'Kritik', fill: '#E74C3C', fontSize: 11, position: 'right' }}
-              />
-            )}
-            <Line type="monotone" dataKey="pct" name="Doluluk"
-              stroke={DENSITY_COLOR[selectedZone?.densityLevel] ?? '#2ECC71'}
-              strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
+      {/* 24 Saatlik Geçmiş Paneli (seçili zone varsa açılır) */}
+      {selectedZone && (
+        <ZoneHistoryPanel
+          zone={selectedZone}
+          onClose={() => setSelectedZoneId(null)}
+        />
+      )}
 
       {/* Bölge Tablosu */}
       <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
         <div className="p-4 border-b border-gray-700 flex items-center justify-between">
           <h2 className="text-white font-semibold">Bölge Tablosu</h2>
-          <p className="text-xs text-gray-500">"Yönlendir" — yoğun bölgelerden yolcu yönlendirmek için</p>
+          <p className="text-xs text-gray-500">
+            Satıra tıklayın → 24s geçmiş grafiği · "Yönlendir" — yolcu yönlendirme
+          </p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -341,19 +414,21 @@ export default function OccupancyManagement() {
                 <tr
                   key={z.zoneId}
                   className={`transition-colors cursor-pointer ${rowBg(z.densityLevel)}
-                    ${trendZoneId === z.zoneId ? 'ring-1 ring-inset ring-eco-green/30' : ''}`}
-                  onClick={() => setTrendZoneId(z.zoneId)}
+                    ${selectedZoneId === z.zoneId ? 'ring-1 ring-inset ring-eco-green/30' : ''}`}
+                  onClick={() => toggleZone(z.zoneId)}
                 >
                   <td className="px-4 py-3 text-white font-medium">{z.zoneName}</td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{z.type}</td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">{z.zoneType ?? z.type}</td>
                   <td className="px-4 py-3 text-right text-gray-300">{z.maxCapacity}</td>
                   <td className="px-4 py-3 text-right text-gray-300">{z.currentCount ?? 0}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
                         <div className="h-full rounded-full"
-                          style={{ width: `${Math.min((z.densityPct ?? 0) * 100, 100)}%`,
-                                   backgroundColor: DENSITY_COLOR[z.densityLevel] ?? '#9CA3AF' }} />
+                          style={{
+                            width: `${Math.min((z.densityPct ?? 0) * 100, 100)}%`,
+                            backgroundColor: DENSITY_COLOR[z.densityLevel] ?? '#9CA3AF',
+                          }} />
                       </div>
                       <span className="text-white w-9 text-right">
                         {((z.densityPct ?? 0) * 100).toFixed(0)}%
@@ -362,9 +437,11 @@ export default function OccupancyManagement() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <span className="text-xs font-medium px-2 py-0.5 rounded-full"
-                      style={{ color: DENSITY_COLOR[z.densityLevel],
-                               backgroundColor: `${DENSITY_COLOR[z.densityLevel]}20`,
-                               border: `1px solid ${DENSITY_COLOR[z.densityLevel]}40` }}>
+                      style={{
+                        color: DENSITY_COLOR[z.densityLevel],
+                        backgroundColor: `${DENSITY_COLOR[z.densityLevel]}20`,
+                        border: `1px solid ${DENSITY_COLOR[z.densityLevel]}40`,
+                      }}>
                       {DENSITY_LABEL[z.densityLevel] ?? z.densityLevel}
                     </span>
                   </td>
