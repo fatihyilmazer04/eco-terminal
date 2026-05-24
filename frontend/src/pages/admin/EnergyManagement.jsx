@@ -21,6 +21,34 @@ const PRIORITY_BADGE = {
   LOW:    'text-eco-green bg-eco-green/10 border border-eco-green/30',
 }
 
+const TEMP_MIN = 16
+const TEMP_MAX = 30
+const LUX_MIN  = 100
+const LUX_MAX  = 1000
+
+function getRecommendation(zone) {
+  const d = zone.densityPct ?? 0
+  const t = zone.temperature ?? zone.temp ?? 22
+  const l = zone.lightingLevel ?? zone.lightingLux ?? 400
+
+  if (d < 0.20) {
+    if (l > 400) return 'Bölge boş, aydınlatmayı azalt (200 Lux)'
+    if (t > 23)  return 'Bölge boş, sıcaklığı düşür (20°C)'
+    return 'Bölge boş, enerji tasarrufu moduna al'
+  }
+  if (d < 0.50) {
+    if (l > 600) return 'Aydınlatmayı kıs (400 Lux)'
+    if (t > 25)  return 'Sıcaklığı düşür (22°C)'
+    return 'Normal — önlem gerekmez'
+  }
+  if (d >= 0.85) {
+    if (t < 21)  return 'Kalabalık bölge, sıcaklığı artır (23°C)'
+    if (l < 400) return 'Kalabalık bölge, aydınlatmayı artır (600 Lux)'
+    return 'Yoğun bölge — izlemede tut'
+  }
+  return 'Normal — önlem gerekmez'
+}
+
 /** Inline sıcaklık/aydınlatma kontrolü */
 function InlineControl({ zone, onUpdate }) {
   const [temp,   setTemp]   = useState(zone.temp   ?? 22)
@@ -47,13 +75,29 @@ function InlineControl({ zone, onUpdate }) {
   }
 
   function adjustTemp(delta) {
+    if (delta < 0 && temp <= TEMP_MIN) {
+      toast.error(`Uyarı: Minimum sıcaklık ${TEMP_MIN}°C. Daha fazla düşürmek konfor ve sağlık açısından uygun değil.`)
+      return
+    }
+    if (delta > 0 && temp >= TEMP_MAX) {
+      toast.error(`Uyarı: Maksimum sıcaklık ${TEMP_MAX}°C. Bu sıcaklık yolcu konforu için uygun değil.`)
+      return
+    }
     const newTemp = parseFloat((temp + delta).toFixed(1))
     setTemp(newTemp)
     applyChange(newTemp, lux)
   }
 
   function adjustLux(delta) {
-    const newLux = Math.max(0, Math.min(1000, lux + delta))
+    if (delta < 0 && lux <= LUX_MIN) {
+      toast.error(`Uyarı: Minimum aydınlatma ${LUX_MIN} Lux. Daha düşük değer güvenlik riski oluşturur.`)
+      return
+    }
+    if (delta > 0 && lux >= LUX_MAX) {
+      toast.error(`Uyarı: Maksimum aydınlatma ${LUX_MAX} Lux. Daha yüksek değer enerji israfına neden olur.`)
+      return
+    }
+    const newLux = Math.max(LUX_MIN, Math.min(LUX_MAX, lux + delta))
     setLux(newLux)
     applyChange(temp, newLux)
   }
@@ -63,13 +107,13 @@ function InlineControl({ zone, onUpdate }) {
       {/* Sıcaklık */}
       <div className="flex items-center gap-1">
         <button
-          disabled={saving}
+          disabled={saving || temp <= TEMP_MIN}
           onClick={() => adjustTemp(-0.5)}
           className="w-5 h-5 rounded bg-gray-600 hover:bg-gray-500 text-gray-300 flex items-center justify-center disabled:opacity-40"
         >-</button>
         <span className="text-gray-200 w-12 text-center">{temp.toFixed(1)}°C</span>
         <button
-          disabled={saving}
+          disabled={saving || temp >= TEMP_MAX}
           onClick={() => adjustTemp(+0.5)}
           className="w-5 h-5 rounded bg-gray-600 hover:bg-gray-500 text-gray-300 flex items-center justify-center disabled:opacity-40"
         >+</button>
@@ -77,13 +121,13 @@ function InlineControl({ zone, onUpdate }) {
       {/* Aydınlatma */}
       <div className="flex items-center gap-1">
         <button
-          disabled={saving}
+          disabled={saving || lux <= LUX_MIN}
           onClick={() => adjustLux(-50)}
           className="w-5 h-5 rounded bg-gray-600 hover:bg-gray-500 text-gray-300 flex items-center justify-center disabled:opacity-40"
         >-</button>
         <span className="text-gray-200 w-14 text-center">{lux} lux</span>
         <button
-          disabled={saving}
+          disabled={saving || lux >= LUX_MAX}
           onClick={() => adjustLux(+50)}
           className="w-5 h-5 rounded bg-gray-600 hover:bg-gray-500 text-gray-300 flex items-center justify-center disabled:opacity-40"
         >+</button>
@@ -96,7 +140,7 @@ export default function EnergyManagement() {
   const { usage: rawUsage, savings, loadingUsage, error } = useEnergy()
   const [usage, setUsage]                   = useState(null) // optimistic override
   const [selectedZoneId, setSelectedZoneId] = useState(null)
-  const [trendHours, setTrendHours]         = useState(6)
+  const [trendRange, setTrendRange]         = useState(3)
   const [aiRecs, setAiRecs]                 = useState([])
   const [loadingRecs, setLoadingRecs]       = useState(false)
   const [showRecs, setShowRecs]             = useState(false)
@@ -104,7 +148,7 @@ export default function EnergyManagement() {
   const effectiveUsage = usage ?? rawUsage
 
   const zoneId = selectedZoneId ?? effectiveUsage[0]?.zoneId
-  const { data: trend } = useEnergyTrend(zoneId, trendHours)
+  const { data: trend } = useEnergyTrend(zoneId, 24)
 
   function handleUpdate(zoneId, patch) {
     setUsage(prev => {
@@ -144,11 +188,12 @@ export default function EnergyManagement() {
     status: z.efficiencyStatus,
   }))
 
-  const trendFormatted = trend.map(p => ({
-    time: new Date(p.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-    kwh:  parseFloat((p.energyKwh ?? 0).toFixed(2)),
-    temp: parseFloat((p.temp ?? 0).toFixed(1)),
+  const historyData = trend.map(p => ({
+    label: `${String(new Date(p.timestamp).getHours()).padStart(2, '0')}:00`,
+    kwh:   parseFloat((p.energyKwh ?? 0).toFixed(2)),
+    temp:  parseFloat((p.temp ?? 0).toFixed(1)),
   }))
+  const trendData = historyData.slice(-trendRange)
 
   return (
     <div className="flex-1 p-6 space-y-6 overflow-auto">
@@ -310,7 +355,7 @@ export default function EnergyManagement() {
                       <InlineControl zone={z} onUpdate={handleUpdate} />
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-400 max-w-xs truncate">
-                      {suggestion?.suggestion ?? '—'}
+                      {getRecommendation(z)}
                     </td>
                   </tr>
                 )
@@ -331,22 +376,22 @@ export default function EnergyManagement() {
           </div>
           <div className="flex gap-2">
             {[3, 6, 12].map(h => (
-              <button key={h} onClick={() => setTrendHours(h)}
+              <button key={h} onClick={() => setTrendRange(h)}
                 className={`text-xs px-2.5 py-1 rounded-lg transition-colors ${
-                  trendHours === h
+                  trendRange === h
                     ? 'bg-eco-green/20 text-eco-green border border-eco-green/40'
                     : 'bg-gray-700 text-gray-400 border border-gray-600 hover:border-gray-500'
                 }`}>{h}s</button>
             ))}
           </div>
         </div>
-        {trendFormatted.length === 0 ? (
+        {trendData.length === 0 ? (
           <p className="text-center text-gray-500 text-sm py-8">Trend verisi bulunamadı.</p>
         ) : (
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={trendFormatted} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+            <LineChart data={trendData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="time" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} interval="preserveStartEnd" />
+              <XAxis dataKey="label" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} interval="preserveStartEnd" />
               <YAxis yAxisId="kwh" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} axisLine={false} />
               <YAxis yAxisId="temp" orientation="right" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} axisLine={false} />
               <Tooltip

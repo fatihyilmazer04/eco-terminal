@@ -43,8 +43,8 @@ function ZoneHistoryPanel({ zone, onClose }) {
     axiosInstance.get(`/api/heatmap/history?zone_id=${zone.zoneId}&hours=24`)
       .then(res => {
         const raw = res.data.data ?? []
-        setData(raw.map(p => ({
-          label: formatTime(p.time),
+        setData(raw.map((p, index) => ({
+          label: `${String(index).padStart(2, '0')}:00`,
           pct:   parseFloat(((p.densityPct ?? 0) * 100).toFixed(1)),
           count: p.peopleCount ?? 0,
         })))
@@ -153,11 +153,10 @@ function RedirectModal({ zone, zones, onClose }) {
   const [message, setMessage]   = useState(`${zone.zoneName} yoğun — lütfen alternatif bölgeye geçin.`)
   const [sending, setSending]   = useState(false)
 
-  // Aynı zone_type'a sahip, farklı, müsait bölgeler
+  // Aynı zone_type'a sahip, kaynak dışındaki tüm bölgeler
   const alternatives = zones.filter(z =>
-    z.zoneId !== zone.zoneId &&
     z.zoneType === zone.zoneType &&
-    (z.densityLevel === 'LOW' || z.densityLevel === 'MEDIUM')
+    z.zoneId !== zone.zoneId
   )
 
   async function handleSend() {
