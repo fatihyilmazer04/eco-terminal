@@ -56,14 +56,17 @@ public class EnergyService {
         // Tek sorguda tüm son metrikler
         Map<Long, EnvironmentalMetric> metricsByZoneId = metricRepository.findLatestPerZone()
                 .stream()
-                .collect(Collectors.toMap(m -> m.getZone().getZoneId(), m -> m));
+                .collect(Collectors.toMap(
+                        m -> m.getZone().getZoneId(), m -> m,
+                        (existing, duplicate) -> existing));
 
         // Tek sorguda tüm son doluluklar
         Map<Long, Float> densityByZoneId = occupancyRepository.findLatestPerZone()
                 .stream()
                 .collect(Collectors.toMap(
                         r -> r.getZone().getZoneId(),
-                        OccupancyReading::getDensityPct
+                        OccupancyReading::getDensityPct,
+                        (existing, duplicate) -> existing
                 ));
 
         return metricsByZoneId.values().stream()
