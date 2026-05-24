@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
-import { getSystemStats, getZoneSettings, updateZoneThreshold, getServicesHealth } from '../../api/settingsApi'
+import { getSystemStats, getZoneSettings, updateZoneThreshold, getServicesHealth,
+         getAllUsers, updateUser, changePassword } from '../../api/settingsApi'
 import { refreshHeatmap } from '../../api/heatmap'
 
 // ── Sekme sabitleri ─────────────────────────────────────────────────────────
@@ -9,6 +10,8 @@ const TABS = [
   { id: 'thresholds',  label: 'Bölge Eşikleri',    icon: '🎯' },
   { id: 'ai',          label: 'AI & Model',         icon: '🤖' },
   { id: 'tech',        label: 'Teknoloji',          icon: '🛠️' },
+  { id: 'users',       label: 'Kullanıcı Yönetimi', icon: '👤' },
+  { id: 'roles',       label: 'Rol & İzinler',      icon: '🔐' },
 ]
 
 // ── Tech stack verisi (CLAUDE.md'den) ───────────────────────────────────────
@@ -441,6 +444,264 @@ function TechTab() {
   )
 }
 
+// ── Kullanıcı Yönetimi Sekmesi ──────────────────────────────────────────────
+function UsersTab() {
+  const [users,    setUsers]    = useState([])
+  const [loading,  setLoading]  = useState(true)
+  const [editId,   setEditId]   = useState(null)
+  const [editVals, setEditVals] = useState({})
+  const [pwForm,   setPwForm]   = useState({ current: '', next: '' })
+  const [pwSaving, setPwSaving] = useState(false)
+
+  useEffect(() => {
+    getAllUsers()
+      .then(r => setUsers(r.data.data ?? []))
+      .catch(() => toast.error('Kullanıcılar alınamadı'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function saveUser(id) {
+    try {
+      const res = await updateUser(id, editVals)
+      setUsers(prev => prev.map(u => u.userId === id ? res.data.data : u))
+      toast.success('Kullanıcı güncellendi')
+      setEditId(null)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Güncelleme başarısız')
+    }
+  }
+
+  async function handlePwChange(e) {
+    e.preventDefault()
+    setPwSaving(true)
+    try {
+      await changePassword({ currentPassword: pwForm.current, newPassword: pwForm.next })
+      toast.success('Şifre değiştirildi')
+      setPwForm({ current: '', next: '' })
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Şifre değiştirilemedi')
+    } finally {
+      setPwSaving(false)
+    }
+  }
+
+  const ROLE_BADGE = {
+    ADMIN: 'text-yellow-400 bg-yellow-500/10 border border-yellow-500/30',
+    USER:  'text-blue-400 bg-blue-500/10 border border-blue-500/30',
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Kullanıcı Listesi */}
+      <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+        <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+          <h3 className="text-white font-medium">Kullanıcılar ({users.length})</h3>
+        </div>
+        {loading ? (
+          <div className="p-6 text-center text-gray-500 text-sm animate-pulse">Yükleniyor...</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-400 text-left border-b border-gray-700">
+                  <th className="px-4 py-2.5 font-medium">E-posta</th>
+                  <th className="px-4 py-2.5 font-medium text-center">Rol</th>
+                  <th className="px-4 py-2.5 font-medium text-center">Durum</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Son Giriş</th>
+                  <th className="px-4 py-2.5 font-medium text-right">İşlem</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-700/50">
+                {users.map(u => {
+                  const isEditing = editId === u.userId
+                  return (
+                    <tr key={u.userId} className="hover:bg-gray-700/20 transition-colors">
+                      <td className="px-4 py-3 text-gray-200">{u.email}</td>
+                      <td className="px-4 py-3 text-center">
+                        {isEditing ? (
+                          <select
+                            value={editVals.role ?? u.role}
+                            onChange={e => setEditVals(v => ({ ...v, role: e.target.value }))}
+                            className="bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded px-2 py-1"
+                          >
+                            <option value="USER">USER</option>
+                            <option value="ADMIN">ADMIN</option>
+                          </select>
+                        ) : (
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${ROLE_BADGE[u.role] ?? ''}`}>
+                            {u.role}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {isEditing ? (
+                          <select
+                            value={editVals.isActive !== undefined ? String(editVals.isActive) : String(u.isActive)}
+                            onChange={e => setEditVals(v => ({ ...v, isActive: e.target.value === 'true' }))}
+                            className="bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded px-2 py-1"
+                          >
+                            <option value="true">Aktif</option>
+                            <option value="false">Pasif</option>
+                          </select>
+                        ) : (
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            u.isActive ? 'text-eco-green bg-eco-green/10 border border-eco-green/20'
+                                       : 'text-red-400 bg-red-500/10 border border-red-500/20'
+                          }`}>
+                            {u.isActive ? 'Aktif' : 'Pasif'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-500 text-xs">
+                        {u.lastLogin ? new Date(u.lastLogin).toLocaleDateString('tr-TR') : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {isEditing ? (
+                          <div className="flex gap-2 justify-end">
+                            <button onClick={() => saveUser(u.userId)}
+                              className="text-xs px-2.5 py-1 rounded bg-eco-green/20 text-eco-green border border-eco-green/30 hover:bg-eco-green/30">
+                              Kaydet
+                            </button>
+                            <button onClick={() => { setEditId(null); setEditVals({}) }}
+                              className="text-xs px-2.5 py-1 rounded bg-gray-700 text-gray-400 hover:bg-gray-600">
+                              İptal
+                            </button>
+                          </div>
+                        ) : (
+                          <button onClick={() => { setEditId(u.userId); setEditVals({ role: u.role, isActive: u.isActive }) }}
+                            className="text-xs px-2.5 py-1 rounded bg-gray-700 text-gray-400 hover:text-white hover:bg-gray-600 transition-colors">
+                            Düzenle
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Şifre Değiştirme */}
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-5">
+        <h3 className="text-white font-medium mb-4">Şifre Değiştir</h3>
+        <form onSubmit={handlePwChange} className="space-y-3 max-w-sm">
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">Mevcut Şifre</label>
+            <input
+              type="password"
+              value={pwForm.current}
+              onChange={e => setPwForm(v => ({ ...v, current: e.target.value }))}
+              className="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-lg px-3 py-2
+                         focus:outline-none focus:border-eco-green/50"
+              required
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">Yeni Şifre</label>
+            <input
+              type="password"
+              value={pwForm.next}
+              onChange={e => setPwForm(v => ({ ...v, next: e.target.value }))}
+              className="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-lg px-3 py-2
+                         focus:outline-none focus:border-eco-green/50"
+              minLength={6}
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={pwSaving}
+            className="px-4 py-2 rounded-lg bg-eco-green/10 border border-eco-green/30 text-eco-green
+                       text-sm hover:bg-eco-green/20 transition-colors disabled:opacity-50"
+          >
+            {pwSaving ? 'Güncelleniyor...' : 'Şifreyi Güncelle'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Rol & İzinler Sekmesi ────────────────────────────────────────────────────
+function RolesTab() {
+  const ROLES = [
+    {
+      role: 'ADMIN',
+      color: '#F59E0B',
+      permissions: [
+        'Tüm admin dashboard sayfalarına erişim',
+        'Bölge eşiği güncelleme (audit log\'a kaydedilir)',
+        'Yoğunluk yönlendirme mesajı gönderme',
+        'AI tahminlerini manuel yenileme',
+        'Enerji ayarı güncelleme',
+        'Kullanıcı rol ve durum yönetimi',
+        'Rapor görüntüleme ve dışa aktarma',
+        'IoT cihaz durumu görüntüleme',
+        'FCM push bildirim gönderme',
+        'Sistem sağlık durumu görüntüleme',
+      ],
+    },
+    {
+      role: 'USER (Yolcu)',
+      color: '#3B82F6',
+      permissions: [
+        'Terminal yoğunluk haritasını görüntüleme',
+        'Rota öneri sistemi kullanma',
+        'Uçuş bilgilerini görüntüleme',
+        'Bekleme salonu listesini görüntüleme',
+        'Kişisel bildirimleri görüntüleme',
+        'Eco-wallet ve puanları görüntüleme',
+        'Ödül kataloğundan puan harcama',
+        'Profil bilgilerini güncelleme',
+        'FCM push bildirim alabilme',
+        'Şifre değiştirme',
+      ],
+    },
+  ]
+
+  return (
+    <div className="space-y-4">
+      <p className="text-gray-400 text-sm">
+        Sistem iki temel rol üzerine kurulmuştur. Rol değişikliği için <strong className="text-white">Kullanıcı Yönetimi</strong> sekmesini kullanın.
+      </p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {ROLES.map(r => (
+          <div key={r.role} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-700 flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: r.color }} />
+              <h3 className="text-white font-medium text-sm">{r.role}</h3>
+            </div>
+            <ul className="divide-y divide-gray-700/50">
+              {r.permissions.map((p, i) => (
+                <li key={i} className="px-4 py-2.5 flex items-center gap-2">
+                  <span className="text-eco-green text-xs">✓</span>
+                  <span className="text-gray-300 text-xs">{p}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-gray-800 rounded-xl border border-yellow-500/20 p-4">
+        <div className="flex items-start gap-2">
+          <span className="text-yellow-400 mt-0.5">⚠</span>
+          <div>
+            <p className="text-yellow-300 text-sm font-medium">Güvenlik Notu</p>
+            <p className="text-gray-400 text-xs mt-0.5">
+              Admin rolü çok kritiktir. Tüm admin işlemleri <code className="text-gray-300 bg-gray-700 px-1 rounded">audit_logs</code> tablosuna kaydedilir.
+              JWT token'ları 15 dakika geçerliliğe sahiptir; refresh token 7 gün geçerlidir.
+              Rate limiting: giriş endpoint'i IP başına dakikada 10 istekle sınırlandırılmıştır.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Ana Sayfa ───────────────────────────────────────────────────────────────
 export default function SystemSettingsPage() {
   const [activeTab, setActiveTab] = useState('overview')
@@ -456,17 +717,17 @@ export default function SystemSettingsPage() {
       </div>
 
       {/* Sekmeler */}
-      <div className="flex gap-1 mb-6 bg-gray-800 p-1 rounded-xl border border-gray-700 w-fit">
+      <div className="flex gap-1 mb-6 flex-wrap bg-gray-800 p-1 rounded-xl border border-gray-700 w-fit">
         {TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm transition-colors
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors
               ${activeTab === tab.id
                 ? 'bg-eco-green/10 text-eco-green border border-eco-green/30 font-medium'
                 : 'text-gray-400 hover:text-gray-200'}`}>
             <span className="text-base">{tab.icon}</span>
-            {tab.label}
+            <span className="hidden sm:inline">{tab.label}</span>
           </button>
         ))}
       </div>
@@ -476,6 +737,8 @@ export default function SystemSettingsPage() {
       {activeTab === 'thresholds' && <ThresholdsTab />}
       {activeTab === 'ai'         && <AITab />}
       {activeTab === 'tech'       && <TechTab />}
+      {activeTab === 'users'      && <UsersTab />}
+      {activeTab === 'roles'      && <RolesTab />}
     </div>
   )
 }

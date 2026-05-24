@@ -5,6 +5,7 @@ import com.ecoterminal.model.dto.OccupancyTimeSeriesPoint;
 import com.ecoterminal.model.dto.ZoneCrowdStatusResponse;
 import com.ecoterminal.model.entity.*;
 import com.ecoterminal.repository.AIPredictionRepository;
+import com.ecoterminal.repository.EnvironmentalMetricRepository;
 import com.ecoterminal.repository.OccupancyReadingRepository;
 import com.ecoterminal.repository.ZoneMapPositionRepository;
 import com.ecoterminal.repository.ZoneRepository;
@@ -38,6 +39,7 @@ public class CrowdMonitorService {
     private final OccupancyReadingRepository   occupancyRepo;
     private final AIPredictionRepository       predictionRepo;
     private final ZoneMapPositionRepository    positionRepo;
+    private final EnvironmentalMetricRepository metricRepo;
 
     /**
      * Tüm terminal heatmap verisi — zone durumu + koordinatlar + AI + özet.
@@ -124,19 +126,51 @@ public class CrowdMonitorService {
     }
 
     /**
-     * Zone'un son X saatlik doluluk geçmişi — grafik için.
+     * Zone'un son X saatlik doluluk + enerji geçmişi — ZoneDetailPanel ComposedChart için.
+     * Enerji verileri en yakın timestamp eşleştirmesiyle birleştirilir (5 dk tolerans).
      */
     @Transactional(readOnly = true)
     public List<OccupancyTimeSeriesPoint> getHistory(Long zoneId, int hours) {
         Instant since = Instant.now().minus(hours, ChronoUnit.HOURS);
         List<OccupancyReading> readings = occupancyRepo.findTimeSeriesByZoneId(zoneId, since);
 
+        // Enerji verilerini zaman sıralı Map'e al (saniye → metrik)
+        List<EnvironmentalMetric> metrics = metricRepo.findTimeSeriesByZoneId(zoneId, since);
+        // Epoch saniye → metrik — en yakın eşleştirme için TreeMap kullan
+        java.util.TreeMap<Long, EnvironmentalMetric> metricMap = new java.util.TreeMap<>();
+        for (EnvironmentalMetric m : metrics) {
+            metricMap.put(m.getRecordedAt().getEpochSecond(), m);
+        }
+
         return readings.stream()
-                .map(r -> new OccupancyTimeSeriesPoint(
-                        LocalDateTime.ofInstant(r.getRecordedAt(), ZoneOffset.UTC).format(TIME_FMT),
-                        r.getDensityPct().doubleValue(),
-                        r.getPeopleCount()
-                ))
+                .map(r -> {
+                    String time = LocalDateTime.ofInstant(r.getRecordedAt(), ZoneOffset.UTC).format(TIME_FMT);
+                    // En yakın enerji okumasını bul (5 dk = 300 sn tolerans)
+                    Long epochSec = r.getRecordedAt().getEpochSecond();
+                    Long floorKey = metricMap.floorKey(epochSec);
+                    Long ceilKey  = metricMap.ceilingKey(epochSec);
+                    EnvironmentalMetric closest = null;
+                    long bestDiff = 300L;
+                    if (floorKey != null && Math.abs(epochSec - floorKey) < bestDiff) {
+                        bestDiff = Math.abs(epochSec - floorKey);
+                        closest  = metricMap.get(floorKey);
+                    }
+                    if (ceilKey != null && Math.abs(ceilKey - epochSec) < bestDiff) {
+                        closest = metricMap.get(ceilKey);
+                    }
+                    if (closest != null) {
+                        return OccupancyTimeSeriesPoint.full(
+                                time,
+                                r.getDensityPct().doubleValue(),
+                                r.getPeopleCount(),
+                                closest.getEnergyKwh() != null ? closest.getEnergyKwh().doubleValue() : null,
+                                closest.getTemp()      != null ? closest.getTemp().doubleValue()      : null,
+                                closest.getLightingLux()
+                        );
+                    }
+                    return OccupancyTimeSeriesPoint.occupancyOnly(
+                            time, r.getDensityPct().doubleValue(), r.getPeopleCount());
+                })
                 .collect(Collectors.toList());
     }
 

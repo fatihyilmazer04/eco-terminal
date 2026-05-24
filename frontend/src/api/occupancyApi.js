@@ -20,4 +20,9 @@ export const occupancyApi = {
   getCurrent() {
     return axiosInstance.get('/api/occupancy/current')
   },
+
+  /** POST /api/occupancy/redirect → RedirectResponse */
+  redirect(body) {
+    return axiosInstance.post('/api/occupancy/redirect', body)
+  },
 }

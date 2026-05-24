@@ -48,4 +48,16 @@ public interface EnvironmentalMetricRepository extends JpaRepository<Environment
             """)
     List<EnvironmentalMetric> findAllInRange(@Param("start") Instant start,
                                               @Param("end") Instant end);
+
+    /**
+     * Belirli zone'un son X saat içindeki metrik geçmişi — ZoneDetailPanel enerji grafiği için.
+     */
+    @Query("""
+            SELECT em FROM EnvironmentalMetric em
+            WHERE em.zone.zoneId = :zoneId
+              AND em.recordedAt >= :since
+            ORDER BY em.recordedAt ASC
+            """)
+    List<EnvironmentalMetric> findTimeSeriesByZoneId(@Param("zoneId") Long zoneId,
+                                                      @Param("since") Instant since);
 }

@@ -15,3 +15,15 @@ export const updateZoneThreshold = (zoneId, criticalThreshold) =>
 /** GET /api/admin/settings/services → ServiceHealthResponse[] */
 export const getServicesHealth = () =>
   axiosInstance.get('/api/admin/settings/services')
+
+/** GET /api/admin/users → UserListResponse[] */
+export const getAllUsers = () =>
+  axiosInstance.get('/api/admin/users')
+
+/** PATCH /api/admin/users/{id} → UserListResponse */
+export const updateUser = (userId, body) =>
+  axiosInstance.patch(`/api/admin/users/${userId}`, body)
+
+/** POST /api/users/change-password */
+export const changePassword = (body) =>
+  axiosInstance.post('/api/users/change-password', body)

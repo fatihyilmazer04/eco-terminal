@@ -15,6 +15,15 @@ export const adminApi = {
   },
 }
 
+export const statsApi = {
+  /** GET /api/stats/visitors — 24s saatlik yolcu istatistiği */
+  getVisitors() { return axiosInstance.get('/api/stats/visitors') },
+  /** GET /api/stats/energy — 24s saatlik enerji istatistiği */
+  getEnergy()   { return axiosInstance.get('/api/stats/energy') },
+  /** GET /api/stats/cameras — IoT cihaz durumları */
+  getCameras()  { return axiosInstance.get('/api/stats/cameras') },
+}
+
 export const energyApi = {
   /** GET /api/energy/usage → EnergyResponse[] */
   getAllUsage() {
@@ -31,5 +40,9 @@ export const energyApi = {
   /** GET /api/energy/trend/{zoneId}?hours=6 → EnergyTrendPoint[] */
   getTrend(zoneId, hours = 6) {
     return axiosInstance.get(`/api/energy/trend/${zoneId}`, { params: { hours } })
+  },
+  /** PATCH /api/energy/zones/{zoneId}/settings → EnergySettingResponse */
+  updateSettings(zoneId, body) {
+    return axiosInstance.patch(`/api/energy/zones/${zoneId}/settings`, body)
   },
 }

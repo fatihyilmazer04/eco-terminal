@@ -32,9 +32,11 @@ CORS(app, origins=[
 # ── Blueprint kayıt ──────────────────────────────────────────────────────────
 from routes.predict import predict_bp
 from routes.crowd import crowd_bp
+from routes.energy import energy_bp
 
 app.register_blueprint(predict_bp)
 app.register_blueprint(crowd_bp)
+app.register_blueprint(energy_bp)
 
 # ── Startup Logu ─────────────────────────────────────────────────────────────
 @app.before_request

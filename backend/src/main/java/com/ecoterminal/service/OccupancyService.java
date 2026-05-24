@@ -2,6 +2,8 @@ package com.ecoterminal.service;
 
 import com.ecoterminal.exception.BusinessException;
 import com.ecoterminal.model.dto.HeatmapResponse;
+import com.ecoterminal.model.dto.RedirectRequest;
+import com.ecoterminal.model.dto.RedirectResponse;
 import com.ecoterminal.model.dto.ZoneOccupancyResponse;
 import com.ecoterminal.model.dto.ZoneResponse;
 import com.ecoterminal.model.entity.DensityLevel;
@@ -20,6 +22,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+// audit_logs JDBC
+import org.springframework.jdbc.core.JdbcTemplate;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -27,6 +32,7 @@ public class OccupancyService {
 
     private final ZoneRepository zoneRepository;
     private final OccupancyReadingRepository occupancyReadingRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     // ── Bölge Listesi ────────────────────────────────────────────────────────
 
@@ -97,6 +103,39 @@ public class OccupancyService {
     @Transactional(readOnly = true)
     public List<ZoneOccupancyResponse> getAllZonesWithOccupancy() {
         return getHeatmapData().zones();
+    }
+
+    // ── Yoğun Bölgeden Yolcu Yönlendirme ─────────────────────────────────────
+
+    @Transactional
+    public RedirectResponse redirectPassengers(RedirectRequest request, Long actorId) {
+        Zone fromZone = zoneRepository.findById(request.fromZoneId())
+                .orElseThrow(() -> BusinessException.notFound("Kaynak bölge"));
+        Zone toZone = zoneRepository.findById(request.toZoneId())
+                .orElseThrow(() -> BusinessException.notFound("Hedef bölge"));
+
+        // Mevcut anlık yolcu sayısı (yönlendirme sayısı için)
+        int fromCount = occupancyReadingRepository.findTopByZoneOrderByRecordedAtDesc(fromZone)
+                .map(OccupancyReading::getPeopleCount).orElse(0);
+        // Tahmini yönlendirme: doluluk > eşik olan kısımdaki yolcu sayısı
+        int notifCount = Math.max(1, (int) (fromCount * 0.3));
+
+        // Audit log
+        String oldVal = String.format("{\"zone\":\"%s\",\"action\":\"redirect_source\"}", fromZone.getZoneName());
+        String newVal = String.format("{\"zone\":\"%s\",\"message\":\"%s\",\"estimated_redirected\":%d}",
+                toZone.getZoneName(), request.message().replace("\"", "'"), notifCount);
+        jdbcTemplate.update(
+                "INSERT INTO audit_logs (actor_id, action_type, target_table, target_id, old_value, new_value) " +
+                "VALUES (?, 'REDIRECT', 'zones', ?, ?::jsonb, ?::jsonb)",
+                actorId, fromZone.getZoneId(), oldVal, newVal);
+
+        log.info("Admin {} yönlendirdi: {} → {}, mesaj='{}'", actorId, fromZone.getZoneName(), toZone.getZoneName(), request.message());
+
+        return new RedirectResponse(
+                fromZone.getZoneId(), fromZone.getZoneName(),
+                toZone.getZoneId(), toZone.getZoneName(),
+                request.message(), notifCount, Instant.now()
+        );
     }
 
     // ── DensityLevel Hesaplama ─────────────────────────────────────────────
