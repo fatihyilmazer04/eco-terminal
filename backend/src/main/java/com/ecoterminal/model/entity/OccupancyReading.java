@@ -52,6 +52,11 @@ public class OccupancyReading {
     @Column(name = "density_pct", nullable = false)
     private Float densityPct;
 
+    /** Veri kaynağı: 'sensor', 'yolov8_simulated', 'yolov8_live' */
+    @Column(name = "source", length = 50)
+    @Builder.Default
+    private String source = "sensor";
+
     @CreationTimestamp
     @Column(name = "recorded_at", nullable = false, updatable = false)
     private Instant recordedAt;

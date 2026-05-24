@@ -87,9 +87,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # Boş string → göreli URL → nginx /api/ proxy'si kullanılır
+        VITE_API_BASE_URL: ""
     container_name: eco-frontend
-    environment:
-      VITE_API_BASE_URL: ${API_BASE_URL:-http://localhost:8080}
     ports:
       - "3000:80"
     depends_on:
@@ -113,6 +114,29 @@ services:
       FLASK_ENV: ${FLASK_ENV:-development}
     ports:
       - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - eco-net
+    restart: unless-stopped
+
+  # ── YOLOv8 Kalabalık Tespit Servisi ──────────────────────────────────────
+  yolov8-service:
+    build:
+      context: ./yolov8-service
+      dockerfile: Dockerfile
+    container_name: eco-yolov8
+    environment:
+      POSTGRES_HOST: postgres
+      DB_PORT: 5432
+      POSTGRES_DB: ${DB_NAME:-ecoterminal}
+      POSTGRES_USER: ${DB_USER:-ecoterminal}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ecoterminal123}
+      AI_SERVICE_URL: http://ai-service:5000
+      FLASK_ENV: ${FLASK_ENV:-development}
+    ports:
+      - "5001:5001"
     depends_on:
       postgres:
         condition: service_healthy

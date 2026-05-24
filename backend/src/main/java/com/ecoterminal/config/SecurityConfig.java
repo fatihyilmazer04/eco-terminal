@@ -54,10 +54,20 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/actuator/prometheus").permitAll()
 
+                        // Swagger / OpenAPI
+                        .requestMatchers(
+                                "/swagger-ui/**", "/swagger-ui.html",
+                                "/api-docs/**", "/v3/api-docs/**"
+                        ).permitAll()
+
                         // Admin-only endpoints
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/ai/**").hasRole("ADMIN")
                         .requestMatchers("/api/energy/**").hasRole("ADMIN")
+
+                        // AI tahmin + kalabalık analizi + heatmap (admin + user)
+                        .requestMatchers("/api/ai/**").hasAnyRole("ADMIN", "USER")
+                        .requestMatchers("/api/crowd/**").hasAnyRole("ADMIN", "USER")
+                        .requestMatchers("/api/heatmap/**").hasAnyRole("ADMIN", "USER")
                         .requestMatchers(HttpMethod.POST, "/api/notifications/send").hasRole("ADMIN")
 
                         // Diğer tüm endpoint'ler authentication gerektirir

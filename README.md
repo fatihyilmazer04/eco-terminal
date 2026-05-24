@@ -156,6 +156,60 @@ eco-terminal/
 
 ---
 
+## YOLOv8 Kalabalık Tespiti & Yapay Dataset
+
+### Yapay veri üretme
+
+```bash
+# PostgreSQL çalışıyor olmalı (docker compose up postgres)
+# Proje kökünde:
+pip install psycopg2-binary numpy python-dotenv
+
+python scripts/generate_dataset.py --days 30 --zone-count 15
+```
+
+Çıktı: Eklenen kayıt sayısı, zone bazlı ortalama doluluk, en yoğun zone.
+
+### YOLOv8 Servisi (port 5001)
+
+```bash
+# Docker ile (tüm servislerle birlikte)
+docker compose up --build yolov8-service
+
+# Manuel test
+curl http://localhost:5001/health
+
+# Tüm zone'lar için anlık detection (sentetik frame)
+curl -X POST http://localhost:5001/detect/batch
+
+# Tekil zone detection (gerçek görüntü yoksa sentetik)
+curl -X POST http://localhost:5001/detect \
+  -H "Content-Type: application/json" \
+  -d '{"zone_id": 1}'
+```
+
+### Kalabalık Analiz Endpoint'leri
+
+```bash
+# Token ile (admin veya user)
+TOKEN="Bearer <jwt_token>"
+
+# Tüm zone'ların anlık durumu (Spring Boot)
+curl -H "Authorization: $TOKEN" http://localhost:8080/api/crowd/status
+
+# Flask AI kalabalık analizi (Spring Boot proxy)
+curl -H "Authorization: $TOKEN" http://localhost:8080/api/ai/crowd-analysis
+
+# Flask'a doğrudan (auth gerekmez)
+curl http://localhost:5000/analyze/crowd
+```
+
+### Admin UI — Kalabalık İzleme
+
+`http://localhost:3000` → Admin girişi → **Kalabalık İzleme** (sidebar)
+
+---
+
 ## Faz Geliştirme Özeti
 
 | Faz | Kapsam                                    | Durum |
@@ -169,3 +223,4 @@ eco-terminal/
 | 6   | Bildirim sistemi (FCM, rate limiter)     | ✅    |
 | 7   | Loyalty sistemi, profil, bekleme alanları | ✅    |
 | 8   | Testler, Docker final, CI/CD             | ✅    |
+| 9   | YOLOv8 tespiti, yapay dataset, AI analiz | ✅    |
