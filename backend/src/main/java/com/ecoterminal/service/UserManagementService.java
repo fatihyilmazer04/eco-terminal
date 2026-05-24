@@ -46,7 +46,7 @@ public class UserManagementService {
             try {
                 user.setRole(Role.valueOf(request.role().toUpperCase()));
             } catch (IllegalArgumentException e) {
-                throw new BusinessException("Geçersiz rol: " + request.role());
+                throw BusinessException.badRequest("Geçersiz rol: " + request.role());
             }
         }
         if (request.isActive() != null) {
@@ -73,7 +73,7 @@ public class UserManagementService {
                 .orElseThrow(() -> BusinessException.notFound("Kullanıcı"));
 
         if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
-            throw new BusinessException("Mevcut şifre hatalı");
+            throw BusinessException.badRequest("Mevcut şifre hatalı");
         }
 
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));

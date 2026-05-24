@@ -103,7 +103,7 @@ public class StatsService {
         int currentHour = LocalDateTime.now(ZoneOffset.UTC).getHour();
         for (int h = 0; h < 24; h++) {
             int hour = (currentHour - 23 + h + 24) % 24;
-            float value = (float) byHour.getOrDefault(hour, 0.0);
+            float value = byHour.getOrDefault(hour, 0.0).floatValue();
             result.add(HourlyDataPoint.of(hour, value));
         }
         return result;
