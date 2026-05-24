@@ -2,7 +2,9 @@ import axios from 'axios'
 import toast from 'react-hot-toast'
 
 const axiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080',
+  // Docker: VITE_API_BASE_URL='' → göreli URL, nginx /api/ proxy'si devreye girer
+  // Local dev: Vite'ın kendi proxy'si (/api/ → localhost:8080) devreye girer
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? '',
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
@@ -40,7 +42,7 @@ axiosInstance.interceptors.response.use(
 
       try {
         const res = await axios.post(
-          `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/auth/refresh`,
+          `${import.meta.env.VITE_API_BASE_URL ?? ''}/api/auth/refresh`,
           { refreshToken },
         )
         const { accessToken } = res.data.data

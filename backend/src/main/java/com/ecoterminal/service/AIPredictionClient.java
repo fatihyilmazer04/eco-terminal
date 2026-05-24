@@ -77,6 +77,22 @@ public class AIPredictionClient {
     }
 
     /**
+     * Flask /analyze/crowd endpoint'inden kalabalık analizi çeker.
+     * AICrowdAnalysisController ve HeatmapController tarafından kullanılır.
+     */
+    public Object getCrowdAnalysis() {
+        String url = aiServiceUrl + "/analyze/crowd";
+        try {
+            return restTemplate.getForObject(url, Object.class);
+        } catch (ResourceAccessException e) {
+            throw new AiServiceException("AI kalabalık analizi erişilemez: " + e.getMessage(), e);
+        } catch (Exception e) {
+            log.warn("Crowd analysis failed: {}", e.getMessage());
+            throw new AiServiceException("Kalabalık analizi alınamadı: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * AI servisinden dönen ham JSON → AIPredictionResponse dönüşümü.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)

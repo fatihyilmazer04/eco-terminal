@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useOccupancy } from '../../hooks/useOccupancy'
 import OccupancyCard from '../../components/OccupancyCard'
+import { useHeatmap } from '../../hooks/useHeatmap'
 
 function StatCard({ label, value, sub, color }) {
   return (
@@ -17,6 +18,7 @@ function StatCard({ label, value, sub, color }) {
 export default function PassengerDashboard() {
   const { user } = useAuth()
   const { data, loading } = useOccupancy(15000)
+  const { data: heatmapData } = useHeatmap(60000)
 
   const zones = data?.zones ?? []
   const criticalZones  = zones.filter(z => z.densityLevel === 'CRITICAL' || z.densityLevel === 'HIGH')
@@ -87,6 +89,36 @@ export default function PassengerDashboard() {
           </>
         )}
       </div>
+
+      {/* Mini terminal yoğunluk durumu kartı */}
+      {heatmapData && (
+        <Link to="/passenger/heatmap" className="block mb-4">
+          <div className="rounded-xl border border-gray-700 bg-gray-800 p-4 hover:border-eco-green/40 transition-colors">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🗺️</span>
+                <span className="text-white text-sm font-medium">Terminal Yoğunluk Durumu</span>
+              </div>
+              <span className="text-eco-green text-xs">Haritayı gör →</span>
+            </div>
+            <div className="flex gap-3 text-xs">
+              {heatmapData.fullCount > 0 && (
+                <span className="text-red-400">🔴 {heatmapData.fullCount} dolu</span>
+              )}
+              {heatmapData.busyCount > 0 && (
+                <span className="text-amber-400">🟡 {heatmapData.busyCount} yoğun</span>
+              )}
+              <span className="text-emerald-400">🟢 {heatmapData.emptyCount} boş</span>
+              <span className="text-gray-500">· {heatmapData.totalZones} bölge</span>
+            </div>
+            {heatmapData.alertZones?.length > 0 && (
+              <p className="text-red-400/80 text-xs mt-1.5">
+                ⚠ {heatmapData.alertZones.join(', ')} dolu — alternatif rota için tıklayın
+              </p>
+            )}
+          </div>
+        </Link>
+      )}
 
       {/* Bölge Kartları */}
       <div className="flex items-center justify-between mb-4">

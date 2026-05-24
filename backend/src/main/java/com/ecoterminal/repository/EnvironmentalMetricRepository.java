@@ -26,16 +26,15 @@ public interface EnvironmentalMetricRepository extends JpaRepository<Environment
 
     /**
      * Tüm bölgelerin en son enerji okumasını tek sorguda getirir (N+1 yok).
+     * DISTINCT ON garantili olarak zone başına tek satır döner.
      */
-    @Query("""
-            SELECT em FROM EnvironmentalMetric em
-            JOIN FETCH em.zone z
-            WHERE em.recordedAt = (
-                SELECT MAX(em2.recordedAt) FROM EnvironmentalMetric em2
-                WHERE em2.zone.zoneId = em.zone.zoneId
-            )
-            ORDER BY z.zoneId ASC
-            """)
+    @Query(value = """
+            SELECT DISTINCT ON (em.zone_id) em.*
+            FROM environmental_metrics em
+            JOIN zones z ON z.zone_id = em.zone_id
+            WHERE z.status = 'ACTIVE'
+            ORDER BY em.zone_id, em.recorded_at DESC
+            """, nativeQuery = true)
     List<EnvironmentalMetric> findLatestPerZone();
 
     /**

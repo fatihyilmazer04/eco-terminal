@@ -3,10 +3,12 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 const NAV_ITEMS = [
-  { to: '/admin/dashboard',   label: 'Dashboard',           icon: '🏠' },
+  { to: '/admin/dashboard',   label: 'Kontrol Paneli',      icon: '🏠' },
+  { to: '/admin/heatmap',     label: 'Canlı Heatmap',       icon: '🗺️' },
   { to: '/admin/occupancy',   label: 'Yoğunluk Yönetimi',  icon: '📊' },
+  { to: '/admin/crowd',       label: 'Kalabalık İzleme',   icon: '👁️' },
   { to: '/admin/energy',      label: 'Enerji Yönetimi',     icon: '⚡' },
-  { to: '/admin/predictions', label: 'AI Tahminler',        icon: '🤖' },
+  { to: '/admin/predictions', label: 'AI Tahminleri',       icon: '🤖' },
   { to: '/admin/reports',     label: 'Raporlar',            icon: '📋' },
   { to: '/admin/settings',    label: 'Sistem Ayarları',     icon: '⚙️' },
 ]

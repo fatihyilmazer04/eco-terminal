@@ -1,6 +1,9 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useOccupancy } from '../../hooks/useOccupancy'
 import OccupancyCard from '../../components/OccupancyCard'
+import AirportHeatmap from '../../components/AirportHeatmap'
+import ZoneDetailPanel from '../../components/ZoneDetailPanel'
+import { useHeatmap } from '../../hooks/useHeatmap'
 
 function SkeletonCard() {
   return (
@@ -26,6 +29,8 @@ function SkeletonCard() {
 
 export default function HeatmapPage() {
   const { data, loading, error, lastUpdated, refetch } = useOccupancy(15000)
+  const { data: heatmapData } = useHeatmap(60000)
+  const [selectedZoneId, setSelectedZoneId] = useState(null)
 
   const zones = data?.zones ?? []
   const criticalZones = zones.filter(
@@ -104,7 +109,37 @@ export default function HeatmapPage() {
         </div>
       )}
 
-      {/* 2x2 Grid */}
+      {/* SVG Heatmap (yeni — koordinatı olan zone'lar için) */}
+      {heatmapData?.zones?.some(z => z.posX != null) && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-base font-semibold text-white">Terminal Haritası</h2>
+            {selectedZoneId && (
+              <button onClick={() => setSelectedZoneId(null)}
+                className="text-xs text-gray-500 hover:text-gray-300">Seçimi temizle</button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+            <div className="xl:col-span-3">
+              <AirportHeatmap
+                zones={heatmapData.zones}
+                onZoneClick={id => setSelectedZoneId(prev => prev === id ? null : id)}
+                selectedZoneId={selectedZoneId}
+              />
+            </div>
+            {selectedZoneId && (
+              <div className="xl:col-span-1">
+                <ZoneDetailPanel
+                  zone={heatmapData.zones.find(z => z.zoneId === selectedZoneId)}
+                  onClose={() => setSelectedZoneId(null)}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 2x2 Grid (mevcut OccupancyCard listesi) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {loading
           ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)

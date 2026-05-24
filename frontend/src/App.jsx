@@ -20,6 +20,9 @@ import OccupancyManagement from './pages/admin/OccupancyManagement'
 import EnergyManagement from './pages/admin/EnergyManagement'
 import ReportsPage from './pages/admin/ReportsPage'
 import AIPredictionsPage from './pages/admin/AIPredictionsPage'
+import CrowdMonitorPage from './pages/admin/CrowdMonitorPage'
+import AdminHeatmapPage from './pages/admin/AdminHeatmapPage'
+import SystemSettingsPage from './pages/admin/SystemSettingsPage'
 import { useFcmToken } from './hooks/useFcmToken'
 
 // Placeholder — sonraki fazlarda gerçek sayfalarla değiştirilecek
@@ -98,7 +101,9 @@ function AppRoutes() {
       <Route path="/admin/energy"      element={<AdminPage><EnergyManagement /></AdminPage>} />
       <Route path="/admin/reports"     element={<AdminPage><ReportsPage /></AdminPage>} />
       <Route path="/admin/predictions" element={<AdminPage><AIPredictionsPage /></AdminPage>} />
-      <Route path="/admin/settings"    element={<AdminPage><PlaceholderPage title="Sistem Ayarları" /></AdminPage>} />
+      <Route path="/admin/heatmap"     element={<AdminPage><AdminHeatmapPage /></AdminPage>} />
+      <Route path="/admin/crowd"       element={<AdminPage><CrowdMonitorPage /></AdminPage>} />
+      <Route path="/admin/settings"    element={<AdminPage><SystemSettingsPage /></AdminPage>} />
 
       <Route path="*" element={<PlaceholderPage title="404 — Sayfa Bulunamadı" />} />
     </Routes>

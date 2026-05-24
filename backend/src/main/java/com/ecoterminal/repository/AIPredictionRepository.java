@@ -24,17 +24,15 @@ public interface AIPredictionRepository extends JpaRepository<AIPrediction, Long
 
     /**
      * Her bölgenin en son tahmini — tek sorguda (N+1 yok).
-     * Admin dashboard ve scheduled refresh için.
+     * DISTINCT ON garantili olarak zone başına tek satır döner.
      */
-    @Query("""
-            SELECT p FROM AIPrediction p
-            JOIN FETCH p.zone z
-            WHERE p.generatedAt = (
-                SELECT MAX(p2.generatedAt) FROM AIPrediction p2
-                WHERE p2.zone.zoneId = p.zone.zoneId
-            )
-            ORDER BY z.zoneId ASC
-            """)
+    @Query(value = """
+            SELECT DISTINCT ON (p.zone_id) p.*
+            FROM ai_predictions p
+            JOIN zones z ON z.zone_id = p.zone_id
+            WHERE z.status = 'ACTIVE'
+            ORDER BY p.zone_id, p.generated_at DESC
+            """, nativeQuery = true)
     List<AIPrediction> findLatestPerZone();
 
     /**

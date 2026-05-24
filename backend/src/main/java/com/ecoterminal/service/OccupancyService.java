@@ -67,7 +67,8 @@ public class OccupancyService {
                         .stream()
                         .collect(Collectors.toMap(
                                 r -> r.getZone().getZoneId(),
-                                r -> r
+                                r -> r,
+                                (existing, duplicate) -> existing   // DISTINCT ON zaten önler; güvenlik ağı
                         ));
 
         List<ZoneOccupancyResponse> responses = zones.stream()

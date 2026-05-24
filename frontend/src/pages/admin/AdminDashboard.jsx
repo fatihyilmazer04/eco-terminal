@@ -7,8 +7,13 @@ import {
 import KpiCard from '../../components/KpiCard'
 import OccupancyCard from '../../components/OccupancyCard'
 import RiskBadge from '../../components/RiskBadge'
+import AirportHeatmap from '../../components/AirportHeatmap'
+import HeatmapSummaryCards from '../../components/HeatmapSummaryCards'
+import AIInsightBox from '../../components/AIInsightBox'
+import ZoneDetailPanel from '../../components/ZoneDetailPanel'
 import { adminApi } from '../../api/adminApi'
 import { predictionApi } from '../../api/predictionApi'
+import { getHeatmapLive } from '../../api/heatmap'
 
 // Bölge çizgi renkleri (recharts)
 const ZONE_COLORS = ['#2ECC71', '#F39C12', '#3B82F6', '#E74C3C', '#8B5CF6', '#EC4899']
@@ -36,6 +41,8 @@ export default function AdminDashboard() {
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [heatmapData, setHeatmapData] = useState(null)
+  const [selectedZoneId, setSelectedZoneId] = useState(null)
   const isMounted = useRef(true)
   const trendBuffer = useRef([])  // son 10 snapshot tutarız
 
@@ -73,9 +80,15 @@ export default function AdminDashboard() {
     isMounted.current = true
     fetchData()
     const id = setInterval(fetchData, 30_000)
+    // Heatmap'i ayrıca çek (60 sn)
+    getHeatmapLive().then(d => { if (isMounted.current) setHeatmapData(d) }).catch(() => {})
+    const heatmapId = setInterval(() => {
+      getHeatmapLive().then(d => { if (isMounted.current) setHeatmapData(d) }).catch(() => {})
+    }, 60_000)
     return () => {
       isMounted.current = false
       clearInterval(id)
+      clearInterval(heatmapId)
     }
   }, [fetchData])
 
@@ -259,6 +272,48 @@ export default function AdminDashboard() {
         {/* AI Tahmin Mini Özet */}
         <AIPredictionMini />
       </div>
+
+      {/* ── Terminal Heatmap Özeti ──────────────────────────────────────────── */}
+      {heatmapData && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-white font-semibold">Terminal Yoğunluk Haritası</h2>
+            <Link
+              to="/admin/heatmap"
+              className="text-eco-green text-xs hover:underline font-medium"
+            >
+              Tam ekran →
+            </Link>
+          </div>
+          <HeatmapSummaryCards data={heatmapData} />
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
+            <div className="xl:col-span-3">
+              <AirportHeatmap
+                zones={heatmapData.zones ?? []}
+                onZoneClick={id => setSelectedZoneId(prev => prev === id ? null : id)}
+                selectedZoneId={selectedZoneId}
+              />
+            </div>
+            <div className="xl:col-span-1">
+              {selectedZoneId ? (
+                <ZoneDetailPanel
+                  zone={heatmapData.zones?.find(z => z.zoneId === selectedZoneId)}
+                  onClose={() => setSelectedZoneId(null)}
+                />
+              ) : (
+                <div className="rounded-xl border border-gray-700 bg-gray-800/50 p-4 flex items-center justify-center h-full min-h-32">
+                  <p className="text-gray-600 text-xs text-center">Zone seçin</p>
+                </div>
+              )}
+            </div>
+          </div>
+          <AIInsightBox
+            summary={heatmapData.aiSummary}
+            alertZones={heatmapData.alertZones}
+            suggestedZones={heatmapData.suggestedZones}
+          />
+        </div>
+      )}
     </div>
   )
 }
