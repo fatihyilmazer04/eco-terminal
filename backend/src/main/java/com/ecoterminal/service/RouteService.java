@@ -5,6 +5,7 @@ import com.ecoterminal.model.dto.RouteResponse;
 import com.ecoterminal.model.dto.RouteStep;
 import com.ecoterminal.model.dto.ZoneOccupancyResponse;
 import com.ecoterminal.model.entity.*;
+import com.ecoterminal.repository.RouteCompletionRepository;
 import com.ecoterminal.repository.TicketRepository;
 import com.ecoterminal.repository.ZoneMapPositionRepository;
 import com.ecoterminal.repository.ZoneRepository;
@@ -31,6 +32,7 @@ public class RouteService {
     private final ZoneRepository zoneRepository;
     private final OccupancyService occupancyService;
     private final ZoneMapPositionRepository zoneMapPositionRepository;
+    private final RouteCompletionRepository completionRepository;
 
     // ── Kullanıcı için kişisel rota önerisi ──────────────────────────────
 
@@ -79,6 +81,10 @@ public class RouteService {
 
         int totalWalk = steps.stream().mapToInt(RouteStep::estimatedWalkMinutes).sum();
 
+        // Bu kullanıcı bu uçuş için daha önce rota tamamlama puanı almış mı?
+        boolean alreadyRewarded = completionRepository
+                .existsByUser_UserIdAndFlightId(userId, flight.getFlightId());
+
         return new RouteResponse(
                 flight.getFlightId(),
                 flight.getDestination(),
@@ -86,7 +92,8 @@ public class RouteService {
                 minsLeft,
                 steps,
                 avgDensity,
-                totalWalk + " dakika"
+                totalWalk + " dakika",
+                alreadyRewarded
         );
     }
 

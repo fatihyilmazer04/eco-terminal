@@ -3,8 +3,10 @@ package com.ecoterminal.controller;
 import com.ecoterminal.exception.BusinessException;
 import com.ecoterminal.model.dto.*;
 import com.ecoterminal.model.entity.RouteCheckin;
+import com.ecoterminal.model.entity.RouteCompletion;
 import com.ecoterminal.model.entity.User;
 import com.ecoterminal.repository.RouteCheckinRepository;
+import com.ecoterminal.repository.RouteCompletionRepository;
 import com.ecoterminal.repository.UserRepository;
 import com.ecoterminal.security.UserPrincipal;
 import com.ecoterminal.service.LoyaltyService;
@@ -25,10 +27,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RouteController {
 
-    private final RouteService           routeService;
-    private final RouteCheckinRepository checkinRepo;
-    private final UserRepository         userRepository;
-    private final LoyaltyService         loyaltyService;
+    private final RouteService              routeService;
+    private final RouteCheckinRepository    checkinRepo;
+    private final RouteCompletionRepository completionRepo;
+    private final UserRepository            userRepository;
+    private final LoyaltyService            loyaltyService;
 
     private static final int ROUTE_COMPLETION_POINTS = 50;
 
@@ -52,7 +55,7 @@ public class RouteController {
 
     /**
      * Bir rota adımını tamamlandı olarak işaretle.
-     * Aynı adım daha önce check-in yapıldıysa 409 döner.
+     * Aynı adım daha önce check-in yapıldıysa 200 döner (idempotent).
      */
     @PostMapping("/checkin")
     public ResponseEntity<ApiResponse<Void>> checkinStep(
@@ -89,8 +92,10 @@ public class RouteController {
     // ── POST /api/routes/complete ──────────────────────────────────────────
 
     /**
-     * Rota tamamlama — puan ANCAK tüm adımlar check-in yapıldıysa verilir.
-     * Backend kayıtlarından doğrular; frontend'e güvenmez.
+     * Rota tamamlama — puan ANCAK:
+     *   1) Tüm adımlar check-in yapıldıysa VE
+     *   2) Bu uçuş için daha önce ödül verilmemişse
+     * verilir. Aksi hâlde alreadyRewarded=true ile mevcut bakiye döner.
      */
     @PostMapping("/complete")
     public ResponseEntity<ApiResponse<RouteCompleteResponse>> completeRoute(
@@ -99,9 +104,20 @@ public class RouteController {
     ) {
         Long userId = principal.getUserId();
 
+        // ── 1. Tekrar kontrolü ──────────────────────────────────────────
+        if (completionRepo.existsByUser_UserIdAndFlightId(userId, req.flightId())) {
+            WalletResponse wallet = loyaltyService.getWallet(userId);
+            log.info("Rota tamamlama tekrarı engellendi: userId={} flight={}",
+                    userId, req.flightId());
+            return ResponseEntity.ok(ApiResponse.ok(
+                    new RouteCompleteResponse(0, wallet.currentBalance(), wallet.tierLevel(), true),
+                    "Bu uçuş için eko puanı zaten kazandınız"
+            ));
+        }
+
+        // ── 2. Adım doğrulaması ─────────────────────────────────────────
         int checkedIn = checkinRepo.countByUser_UserIdAndFlightId(userId, req.flightId());
 
-        // totalSteps'i DB'deki kayıtlardan al
         List<Integer> totalStepsList = checkinRepo.findTotalStepsByUserAndFlight(userId, req.flightId());
         if (totalStepsList.isEmpty()) {
             throw new BusinessException("Henüz hiç adım tamamlanmadı", HttpStatus.BAD_REQUEST);
@@ -117,18 +133,29 @@ public class RouteController {
                     HttpStatus.BAD_REQUEST);
         }
 
-        // Tüm adımlar OK → puan ver
+        // ── 3. Puan ver ─────────────────────────────────────────────────
         WalletResponse wallet = loyaltyService.addPoints(
                 userId,
                 ROUTE_COMPLETION_POINTS,
                 "Rota tamamlandı (uçuş #" + req.flightId() + ") — tüm " + totalSteps + " durak check-in yapıldı"
         );
 
-        log.info("Rota tamamlama puanı verildi: userId={} +{} puan (toplam={})",
-                userId, ROUTE_COMPLETION_POINTS, wallet.currentBalance());
+        // ── 4. Completion kaydı — bir daha ödül verilmesini önler ───────
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> BusinessException.notFound("Kullanıcı"));
+
+        completionRepo.save(RouteCompletion.builder()
+                .user(user)
+                .flightId(req.flightId())
+                .pointsEarned(ROUTE_COMPLETION_POINTS)
+                .build());
+
+        log.info("Rota tamamlama puanı verildi: userId={} +{} puan (toplam={}) flight={}",
+                userId, ROUTE_COMPLETION_POINTS, wallet.currentBalance(), req.flightId());
 
         return ResponseEntity.ok(ApiResponse.ok(
-                new RouteCompleteResponse(ROUTE_COMPLETION_POINTS, wallet.currentBalance(), wallet.tierLevel()),
+                new RouteCompleteResponse(ROUTE_COMPLETION_POINTS, wallet.currentBalance(),
+                        wallet.tierLevel(), false),
                 "Tebrikler! Rotayı tamamladınız"
         ));
     }

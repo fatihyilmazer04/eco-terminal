@@ -149,13 +149,18 @@ export default function RouteSuggestionPage() {
         try {
           const res = await routeApi.completeRoute(route.flightId)
           const data = res.data.data
-          toast.success(
-            `🏆 Rota tamamlandı! +${data.pointsEarned} Eko-Puan kazandınız! Toplam: ${data.newBalance}`,
-            { duration: 5000 }
-          )
+          if (data.alreadyRewarded) {
+            // Daha önce bu uçuş için puan alınmış
+            toast('✓ Bu uçuş için eko puanı zaten kazanılmış.', { icon: 'ℹ️', duration: 4000 })
+          } else {
+            toast.success(
+              `🏆 Rota tamamlandı! +${data.pointsEarned} Eko-Puan kazandınız! Toplam: ${data.newBalance}`,
+              { duration: 5000 }
+            )
+            refreshWallet()   // Navbar'daki bakiyeyi anında güncelle (sadece yeni puan varsa)
+          }
           setJourneyComplete(true)
           setActiveStep(null)
-          refreshWallet()   // Navbar'daki bakiyeyi anında güncelle
         } catch (err) {
           const msg = err.response?.data?.message ?? 'Rota tamamlanamadı'
           toast.error(msg)
@@ -268,7 +273,9 @@ export default function RouteSuggestionPage() {
               {journeyComplete ? '🏆 Rota Tamamlandı!' : `İlerleme: ${doneCount}/${totalSteps} durak`}
             </span>
             <span className="text-xs text-eco-green font-mono">
-              {journeyComplete ? '+50 Eko-Puan' : `${Math.round((doneCount / totalSteps) * 100)}%`}
+              {journeyComplete
+                ? (route.alreadyRewarded ? 'Tamamlandı' : '+50 Eko-Puan')
+                : `${Math.round((doneCount / totalSteps) * 100)}%`}
             </span>
           </div>
           <div className="w-full h-2.5 bg-gray-700 rounded-full overflow-hidden">
@@ -287,16 +294,32 @@ export default function RouteSuggestionPage() {
         </div>
       )}
 
+      {/* Daha önce ödüllendirilmiş banner (önceki oturum) */}
+      {route.alreadyRewarded && !journeyStarted && !journeyComplete && (
+        <div className="mb-4 p-4 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center gap-3">
+          <span className="text-xl flex-shrink-0">ℹ️</span>
+          <div>
+            <p className="text-blue-300 font-semibold text-sm">Bu uçuş için eko puanı zaten kazandınız</p>
+            <p className="text-gray-400 text-xs mt-0.5">Rotayı yeniden takip edebilirsiniz, ancak tekrar puan verilmez.</p>
+          </div>
+        </div>
+      )}
+
       {/* Rotayı Başlat butonu (henüz başlamadıysa) */}
       {!journeyStarted && !journeyComplete && (
         <button
           onClick={handleStartJourney}
-          className="w-full py-3.5 rounded-xl font-bold text-sm mb-6 transition-all
-                     flex items-center justify-center gap-2
-                     bg-eco-green text-gray-900 hover:bg-green-400 active:scale-95
-                     shadow-lg shadow-eco-green/20"
+          className={`
+            w-full py-3.5 rounded-xl font-bold text-sm mb-6 transition-all
+            flex items-center justify-center gap-2
+            ${route.alreadyRewarded
+              ? 'bg-gray-700 text-gray-400 hover:bg-gray-600 border border-gray-600'
+              : 'bg-eco-green text-gray-900 hover:bg-green-400 active:scale-95 shadow-lg shadow-eco-green/20'}
+          `}
         >
-          🚶 Rotayı Başlat — Her Durağı Tek Tek Tamamla
+          {route.alreadyRewarded
+            ? '🚶 Rotayı Yeniden Takip Et (puan verilmez)'
+            : '🚶 Rotayı Başlat — Her Durağı Tek Tek Tamamla'}
         </button>
       )}
 
@@ -304,8 +327,12 @@ export default function RouteSuggestionPage() {
       {journeyComplete && (
         <div className="mb-6 p-4 rounded-xl bg-eco-green/15 border border-eco-green/40 text-center">
           <div className="text-3xl mb-1">🏆</div>
-          <p className="text-eco-green font-bold text-lg">Tebrikler! Rotayı Tamamladınız</p>
-          <p className="text-gray-400 text-sm mt-1">50 Eko-Puan hesabınıza eklendi</p>
+          <p className="text-eco-green font-bold text-lg">Rotayı Tamamladınız!</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {route.alreadyRewarded
+              ? 'Bu uçuş için eko puanı daha önce kazanılmıştı'
+              : '50 Eko-Puan hesabınıza eklendi'}
+          </p>
         </div>
       )}
 
