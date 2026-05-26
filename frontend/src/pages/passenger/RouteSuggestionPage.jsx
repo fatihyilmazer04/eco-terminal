@@ -5,6 +5,7 @@ import { useHeatmap } from '../../hooks/useHeatmap'
 import OccupancyCard from '../../components/OccupancyCard'
 import AirportHeatmap from '../../components/AirportHeatmap'
 import { routeApi } from '../../api/routeApi'
+import { useLoyaltyContext } from '../../context/LoyaltyContext'
 import toast from 'react-hot-toast'
 
 const LEVEL_COLORS = {
@@ -112,6 +113,7 @@ export default function RouteSuggestionPage() {
   const { data: route, loading, error } = useSuggestedRoute()
   const { data: heatmapData } = useHeatmap(60000)
   const { data: alternatives } = useAlternatives(1)
+  const { refreshWallet } = useLoyaltyContext()
 
   const [journeyStarted,  setJourneyStarted]  = useState(false)
   const [activeStep,      setActiveStep]      = useState(null)
@@ -153,6 +155,7 @@ export default function RouteSuggestionPage() {
           )
           setJourneyComplete(true)
           setActiveStep(null)
+          refreshWallet()   // Navbar'daki bakiyeyi anında güncelle
         } catch (err) {
           const msg = err.response?.data?.message ?? 'Rota tamamlanamadı'
           toast.error(msg)

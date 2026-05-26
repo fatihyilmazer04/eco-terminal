@@ -1,34 +1,25 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useLoyaltyContext } from '../context/LoyaltyContext'
 import { useNotifications } from '../hooks/useNotifications'
 import NotificationBell from './NotificationBell'
 import EcoPointsBadge from './EcoPointsBadge'
-import { loyaltyApi } from '../api/loyaltyApi'
 
 /**
  * Yolcu sayfaları için üst navigasyon çubuğu.
  * - Sol: Eco-Terminal logo + yeşil sistem aktif noktası
- * - Sağ: NotificationBell + kullanıcı adı + çıkış
+ * - Sağ: NotificationBell + eko puan badge + Ayarlar + çıkış
  * - Admin modunda: "Admin Panel" kırmızı badge
  * - Mobil: hamburger menü
+ * Eko-puan durumu LoyaltyContext'ten okunur — earn/spend sonrası anında güncellenir.
  */
 export default function Navbar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications()
-  const [walletBalance, setWalletBalance] = useState(null)
-  const [walletTier, setWalletTier]       = useState('GREEN')
-
-  useEffect(() => {
-    loyaltyApi.getWallet()
-      .then(r => {
-        setWalletBalance(r.data.data?.currentBalance ?? 0)
-        setWalletTier(r.data.data?.tierLevel ?? 'GREEN')
-      })
-      .catch(() => {})
-  }, [])
+  const { balance: walletBalance, tierLevel: walletTier } = useLoyaltyContext()
 
   const handleLogout = () => {
     logout()
@@ -103,7 +94,7 @@ export default function Navbar() {
             <div className="hidden sm:flex items-center gap-2">
               <Link to="/passenger/profile"
                     className="text-gray-400 text-xs hover:text-white transition-colors">
-                {user?.fullName?.split(' ')[0] ?? user?.email}
+                Ayarlar
               </Link>
               <button
                 onClick={handleLogout}
@@ -140,7 +131,7 @@ export default function Navbar() {
             <MobileLink to="/passenger/lounges"        label="Salonlar"           onClick={() => setMobileOpen(false)} />
             <MobileLink to="/passenger/rewards"        label="🌿 Ödüller"          onClick={() => setMobileOpen(false)} />
             <MobileLink to="/passenger/notifications"   label={`Bildirimler${unreadCount > 0 ? ` (${unreadCount})` : ''}`} onClick={() => setMobileOpen(false)} />
-            <MobileLink to="/passenger/profile"         label="Profilim"           onClick={() => setMobileOpen(false)} />
+            <MobileLink to="/passenger/profile"         label="Ayarlar"            onClick={() => setMobileOpen(false)} />
             {isAdmin && (
               <MobileLink to="/admin/dashboard" label="Admin Panel" onClick={() => setMobileOpen(false)} />
             )}

@@ -2,6 +2,7 @@ import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { LoyaltyProvider } from './context/LoyaltyContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import PrivateRoute from './components/PrivateRoute'
 import AdminRoute from './components/AdminRoute'
@@ -121,6 +122,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <LoyaltyProvider>
         <ErrorBoundary>
           <AppRoutes />
         </ErrorBoundary>
@@ -137,6 +139,7 @@ export default function App() {
             error:   { iconTheme: { primary: '#E74C3C', secondary: '#1F2937' } },
           }}
         />
+        </LoyaltyProvider>
       </AuthProvider>
     </BrowserRouter>
   )
