@@ -2,6 +2,7 @@ import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import ErrorBoundary from './components/ErrorBoundary'
 import PrivateRoute from './components/PrivateRoute'
 import AdminRoute from './components/AdminRoute'
 import AdminLayout from './components/AdminLayout'
@@ -15,6 +16,7 @@ import RouteSuggestionPage from './pages/passenger/RouteSuggestionPage'
 import LoungesPage from './pages/passenger/LoungesPage'
 import NotificationsPage from './pages/passenger/NotificationsPage'
 import ProfilePage from './pages/passenger/ProfilePage'
+import RewardsPage from './pages/passenger/RewardsPage'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import OccupancyManagement from './pages/admin/OccupancyManagement'
 import EnergyManagement from './pages/admin/EnergyManagement'
@@ -24,6 +26,7 @@ import CrowdMonitorPage from './pages/admin/CrowdMonitorPage'
 import AdminHeatmapPage from './pages/admin/AdminHeatmapPage'
 import SystemSettingsPage from './pages/admin/SystemSettingsPage'
 import { useFcmToken } from './hooks/useFcmToken'
+import ChatbotWidget from './components/ChatbotWidget'
 
 // Placeholder — sonraki fazlarda gerçek sayfalarla değiştirilecek
 const PlaceholderPage = ({ title }) => (
@@ -71,6 +74,7 @@ function PassengerPage({ children }) {
       <div className="min-h-screen bg-gray-900 flex flex-col">
         <Navbar />
         <div className="flex-1">{children}</div>
+        <ChatbotWidget />
       </div>
     </PrivateRoute>
   )
@@ -93,7 +97,8 @@ function AppRoutes() {
       <Route path="/passenger/flights"        element={<PassengerPage><FlightInfoPage /></PassengerPage>} />
       <Route path="/passenger/lounges"        element={<PassengerPage><LoungesPage /></PassengerPage>} />
       <Route path="/passenger/notifications"  element={<PassengerPage><NotificationsPage /></PassengerPage>} />
-      <Route path="/passenger/profile"         element={<PassengerPage><ProfilePage /></PassengerPage>} />
+      <Route path="/passenger/profile"        element={<PassengerPage><ProfilePage /></PassengerPage>} />
+      <Route path="/passenger/rewards"        element={<PassengerPage><RewardsPage /></PassengerPage>} />
 
       {/* Admin rotaları — AdminLayout + Sidebar */}
       <Route path="/admin/dashboard"   element={<AdminPage><AdminDashboard /></AdminPage>} />
@@ -114,7 +119,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <ErrorBoundary>
+          <AppRoutes />
+        </ErrorBoundary>
         <Toaster
           position="top-right"
           toastOptions={{
@@ -132,3 +139,4 @@ export default function App() {
     </BrowserRouter>
   )
 }
+

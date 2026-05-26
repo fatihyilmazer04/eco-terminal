@@ -187,22 +187,30 @@ export default function AirportHeatmap({ zones = [], onZoneClick, selectedZoneId
         style={{ display: 'block', background: '#0F172A' }}
         aria-label="İstanbul Havalimanı Terminal Yoğunluk Haritası"
       >
-        {/* ── Arka plan bandları ──────────────────────────────────────── */}
-        {/* CheckIn + Güvenlik bandı */}
-        <rect x={0} y={15} width={W} height={80}
-          fill="#1E293B" fillOpacity={0.6} />
-        {/* Orta yürüyüş koridoru */}
-        <rect x={0} y={120} width={W} height={40}
-          fill="#0F172A" fillOpacity={0.8} />
-        {/* Gate bandı */}
-        <rect x={0} y={160} width={W} height={108}
-          fill="#1E293B" fillOpacity={0.4} />
-        {/* Alt yürüyüş koridoru */}
-        <rect x={0} y={320} width={W} height={30}
-          fill="#0F172A" fillOpacity={0.8} />
-        {/* Lounge bandı */}
-        <rect x={0} y={320} width={W} height={120}
-          fill="#1E293B" fillOpacity={0.3} />
+        {/* ── Arka plan: dikey bölüm sütunları (sol→sağ yolcu akışı) ─── */}
+        {/* Check-in sütunu  (posX 0-20%) */}
+        <rect x={0} y={10} width={200} height={H - 18}
+          fill="#1E293B" fillOpacity={0.55} />
+        {/* Güvenlik sütunu (posX 20-41%) */}
+        <rect x={200} y={10} width={215} height={H - 18}
+          fill="#1A2534" fillOpacity={0.45} />
+        {/* Merkezi Terminal / Lounge sütunu (posX 41-62%) */}
+        <rect x={415} y={10} width={210} height={H - 18}
+          fill="#161F2E" fillOpacity={0.40} />
+        {/* Gate alanı (posX 62-100%) */}
+        <rect x={625} y={10} width={375} height={H - 18}
+          fill="#1B2A3B" fillOpacity={0.30} />
+
+        {/* Konkors yatay alt şeritleri
+            A: posY 8-25% → y 48-150 px   (A1/A2/A3 — 3 gate)
+            B: posY 40-57% → y 240-342 px  (B1/B2 — 2 gate)
+            C: posY 72-89% → y 432-534 px  (C1/C2/C3 — 3 gate)          */}
+        <rect x={627} y={40} width={343} height={118}
+          fill="#1E3554" fillOpacity={0.38} rx={3} />
+        <rect x={627} y={232} width={223} height={118}
+          fill="#1E3554" fillOpacity={0.38} rx={3} />
+        <rect x={627} y={424} width={343} height={118}
+          fill="#1E3554" fillOpacity={0.38} rx={3} />
 
         {/* ── Terminal çerçevesi ──────────────────────────────────────── */}
         <rect x={4} y={4} width={W - 8} height={H - 8}
@@ -215,35 +223,64 @@ export default function AirportHeatmap({ zones = [], onZoneClick, selectedZoneId
           İSTANBUL HAVALİMANI — CANLI YOĞUNLUK HARİTASI
         </text>
 
-        {/* ── Bölüm etiketleri ────────────────────────────────────────── */}
-        <text x={16} y={32} fontSize={9} fill="#64748B" fontWeight="700" letterSpacing="1">CHECK-IN</text>
-        <text x={500} y={32} fontSize={9} fill="#64748B" fontWeight="700" letterSpacing="1">GÜVENLİK</text>
-        <text x={16} y={175} fontSize={9} fill="#64748B" fontWeight="700" letterSpacing="1">KAPILA</text>
+        {/* ── Dikey bölüm ayırıcıları ─────────────────────────────────── */}
+        <line x1={200} y1={18} x2={200} y2={H - 8}
+          stroke="#334155" strokeWidth={1} strokeDasharray="5 4" />
+        <line x1={415} y1={18} x2={415} y2={H - 8}
+          stroke="#334155" strokeWidth={1} strokeDasharray="5 4" />
+        <line x1={625} y1={18} x2={625} y2={H - 8}
+          stroke="#334155" strokeWidth={1.5} />
 
-        {/* Concourse ayırıcılar */}
-        <line x1={400} y1={160} x2={400} y2={268} stroke="#334155" strokeWidth={1} strokeDasharray="4 3" />
-        <line x1={650} y1={160} x2={650} y2={268} stroke="#334155" strokeWidth={1} strokeDasharray="4 3" />
+        {/* ── Bölüm başlıkları ────────────────────────────────────────── */}
+        <text x={100} y={32} textAnchor="middle"
+          fontSize={9} fill="#64748B" fontWeight="700" letterSpacing="1.5">CHECK-IN</text>
+        <text x={307} y={32} textAnchor="middle"
+          fontSize={9} fill="#64748B" fontWeight="700" letterSpacing="1.5">GÜVENLİK</text>
+        <text x={520} y={32} textAnchor="middle"
+          fontSize={9} fill="#64748B" fontWeight="700" letterSpacing="1">MERKEZİ TERMİNAL</text>
 
-        {/* Concourse etiketleri */}
-        <text x={200} y={155} textAnchor="middle" fontSize={8} fill="#475569" fontWeight="600">KONKoRS A</text>
-        <text x={525} y={155} textAnchor="middle" fontSize={8} fill="#475569" fontWeight="600">KONKORS B</text>
-        <text x={800} y={155} textAnchor="middle" fontSize={8} fill="#475569" fontWeight="600">KONKORS C</text>
+        {/* Konkors başlıkları (gate alanı içinde, her sub-band üstü) */}
+        <text x={798} y={30} textAnchor="middle"
+          fontSize={8} fill="#475569" fontWeight="600" letterSpacing="1">A KAPILARI</text>
+        <text x={738} y={222} textAnchor="middle"
+          fontSize={8} fill="#475569" fontWeight="600" letterSpacing="1">B KAPILARI</text>
+        <text x={798} y={414} textAnchor="middle"
+          fontSize={8} fill="#475569" fontWeight="600" letterSpacing="1">C KAPILARI</text>
 
-        {/* Lounge etiketi */}
-        <text x={16} y={340} fontSize={9} fill="#64748B" fontWeight="700" letterSpacing="1">SALONLAR</text>
-
-        {/* ── Yürüyüş yolu okları ─────────────────────────────────────── */}
-        {[200, 400, 600, 800].map(cx => (
-          <g key={cx}>
-            <line x1={cx} y1={125} x2={cx} y2={155}
-              stroke="#334155" strokeWidth={1} markerEnd="url(#arrow)" />
-          </g>
-        ))}
+        {/* ── Yolcu akışı okları (sol → sağ, her CheckIn satırı hizasında) */}
         <defs>
-          <marker id="arrow" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
             <path d="M0,0 L0,6 L6,3 z" fill="#334155" />
           </marker>
         </defs>
+        {/* y=174 CheckIn-1 merkezi, y=306 CheckIn-2 merkezi, y=438 CheckIn-3 merkezi */}
+        {[174, 306, 438].map(ay => (
+          <g key={ay}>
+            {/* CheckIn → Güvenlik */}
+            <line x1={173} y1={ay} x2={196} y2={ay}
+              stroke="#334155" strokeWidth={1} markerEnd="url(#arrow)" />
+            {/* Güvenlik → Merkezi Terminal */}
+            <line x1={373} y1={ay} x2={410} y2={ay}
+              stroke="#334155" strokeWidth={1} markerEnd="url(#arrow)" />
+            {/* Merkezi Terminal → Gate Alanı */}
+            <line x1={573} y1={ay} x2={618} y2={ay}
+              stroke="#334155" strokeWidth={1} markerEnd="url(#arrow)" />
+          </g>
+        ))}
+
+        {/* ── Konkors omurgası ve yatay bağlantı dalları ──────────────── */}
+        {/* Dikey omurga (gate alanı sol kenarı boyunca) */}
+        <line x1={627} y1={40} x2={627} y2={H - 58}
+          stroke="#334155" strokeWidth={0.8} strokeDasharray="3 3" />
+        {/* A dalı: merkez y=99, A1-A3 sağ kenar x=970 */}
+        <line x1={627} y1={99} x2={970} y2={99}
+          stroke="#334155" strokeWidth={0.6} strokeDasharray="3 3" />
+        {/* B dalı: merkez y=291, B1-B2 sağ kenar x=850 */}
+        <line x1={627} y1={291} x2={850} y2={291}
+          stroke="#334155" strokeWidth={0.6} strokeDasharray="3 3" />
+        {/* C dalı: merkez y=483, C1-C3 sağ kenar x=970 */}
+        <line x1={627} y1={483} x2={970} y2={483}
+          stroke="#334155" strokeWidth={0.6} strokeDasharray="3 3" />
 
         {/* ── Zone rectleri ────────────────────────────────────────────── */}
         {visibleZones.map(zone => (

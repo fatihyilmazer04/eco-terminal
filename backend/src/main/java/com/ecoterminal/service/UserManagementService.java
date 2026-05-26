@@ -9,7 +9,6 @@ import com.ecoterminal.model.entity.User;
 import com.ecoterminal.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +22,7 @@ public class UserManagementService {
 
     private final UserRepository    userRepository;
     private final PasswordEncoder   passwordEncoder;
-    private final JdbcTemplate      jdbcTemplate;
+    private final AuditLogService   auditLogService;
 
     // ── Admin işlemleri ───────────────────────────────────────────────────────
 
@@ -56,10 +55,7 @@ public class UserManagementService {
         userRepository.save(user);
 
         String newVal = String.format("{\"role\":\"%s\",\"is_active\":%b}", user.getRole(), user.getIsActive());
-        jdbcTemplate.update(
-                "INSERT INTO audit_logs (actor_id, action_type, target_table, target_id, old_value, new_value) " +
-                "VALUES (?, 'USER_UPDATE', 'users', ?, ?::jsonb, ?::jsonb)",
-                actorId, targetId, oldVal, newVal);
+        auditLogService.log(actorId, "USER_UPDATE", "users", targetId, oldVal, newVal);
 
         log.info("Admin {} kullanıcı {} güncelledi: {}", actorId, targetId, newVal);
         return UserListResponse.from(user);

@@ -18,8 +18,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import org.springframework.jdbc.core.JdbcTemplate;
-
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -33,7 +31,7 @@ public class EnergyService {
     private final EnvironmentalMetricRepository metricRepository;
     private final OccupancyReadingRepository    occupancyRepository;
     private final ZoneRepository                zoneRepository;
-    private final JdbcTemplate                  jdbcTemplate;
+    private final AuditLogService               auditLogService;
 
     // ── Tek Bölge Enerji Durumu ──────────────────────────────────────────
 
@@ -176,10 +174,7 @@ public class EnergyService {
         String newVal = String.format("{\"temp\":%.1f,\"lighting_lux\":%d}",
                 updated.getTemp() != null ? updated.getTemp() : 0f,
                 updated.getLightingLux() != null ? updated.getLightingLux() : 0);
-        jdbcTemplate.update(
-                "INSERT INTO audit_logs (actor_id, action_type, target_table, target_id, old_value, new_value) " +
-                "VALUES (?, 'ENERGY_SETTING', 'environmental_metrics', ?, ?::jsonb, ?::jsonb)",
-                actorId, zoneId, oldVal, newVal);
+        auditLogService.log(actorId, "ENERGY_SETTING", "environmental_metrics", zoneId, oldVal, newVal);
 
         log.info("Enerji ayarı güncellendi: zone={}, sıcaklık {}→{}, aydınlatma {}→{}",
                 zone.getZoneName(), prevTemp, updated.getTemp(), prevLux, updated.getLightingLux());

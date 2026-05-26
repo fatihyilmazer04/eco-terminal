@@ -1,0 +1,241 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "9.0.0" },
+    { "type": "datasource", "id": "loki", "name": "Loki", "version": "1.0.0" }
+  ],
+  "id": null,
+  "uid": "eco-terminal-logs",
+  "title": "Eco-Terminal — Container Logları",
+  "description": "Loki üzerinden servis bazlı log akışı",
+  "tags": ["eco-terminal", "logs", "loki"],
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "panels": [
+
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Son 1 Saatteki Toplam Log Satırı",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 3 },
+      "datasource": { "type": "loki", "uid": "loki-eco" },
+      "targets": [{
+        "datasource": { "type": "loki", "uid": "loki-eco" },
+        "expr": "sum(count_over_time({compose_project=\"eco-terminal\"}[1h]))",
+        "legendFormat": "Toplam Satır",
+        "refId": "A"
+      }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "#2ECC71" },
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Son 1 Saatteki Hata Sayısı",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 3 },
+      "datasource": { "type": "loki", "uid": "loki-eco" },
+      "targets": [{
+        "datasource": { "type": "loki", "uid": "loki-eco" },
+        "expr": "sum(count_over_time({compose_project=\"eco-terminal\"} |= \"ERROR\" [1h]))",
+        "legendFormat": "Hata",
+        "refId": "A"
+      }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          },
+          "unit": "short",
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Son 1 Saatteki Uyarı Sayısı",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 3 },
+      "datasource": { "type": "loki", "uid": "loki-eco" },
+      "targets": [{
+        "datasource": { "type": "loki", "uid": "loki-eco" },
+        "expr": "sum(count_over_time({compose_project=\"eco-terminal\"} |= \"WARN\" [1h]))",
+        "legendFormat": "Uyarı",
+        "refId": "A"
+      }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "orange", "value": 50 }
+            ]
+          },
+          "unit": "short",
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Servis Bazlı Log Hacmi",
+      "description": "Container başına dakikadaki log satırı sayısı",
+      "gridPos": { "x": 0, "y": 3, "w": 24, "h": 7 },
+      "datasource": { "type": "loki", "uid": "loki-eco" },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki-eco" },
+          "expr": "sum by (container_name) (rate({compose_project=\"eco-terminal\"}[1m]))",
+          "legendFormat": "{{container_name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 8, "showPoints": "never" }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "id": 20,
+      "type": "logs",
+      "title": "Backend (Spring Boot) Logları",
+      "description": "eco-backend container log akışı — ERROR/WARN vurgulu",
+      "gridPos": { "x": 0, "y": 10, "w": 24, "h": 10 },
+      "datasource": { "type": "loki", "uid": "loki-eco" },
+      "targets": [{
+        "datasource": { "type": "loki", "uid": "loki-eco" },
+        "expr": "{container_name=\"eco-backend\"}",
+        "legendFormat": "",
+        "refId": "A"
+      }],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    },
+
+    {
+      "id": 21,
+      "type": "logs",
+      "title": "AI Servisi Logları",
+      "description": "eco-ai-service container log akışı",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 9 },
+      "datasource": { "type": "loki", "uid": "loki-eco" },
+      "targets": [{
+        "datasource": { "type": "loki", "uid": "loki-eco" },
+        "expr": "{container_name=\"eco-ai-service\"}",
+        "legendFormat": "",
+        "refId": "A"
+      }],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    },
+
+    {
+      "id": 22,
+      "type": "logs",
+      "title": "YOLOv8 Servisi Logları",
+      "description": "eco-yolov8 container log akışı",
+      "gridPos": { "x": 12, "y": 20, "w": 12, "h": 9 },
+      "datasource": { "type": "loki", "uid": "loki-eco" },
+      "targets": [{
+        "datasource": { "type": "loki", "uid": "loki-eco" },
+        "expr": "{container_name=\"eco-yolov8\"}",
+        "legendFormat": "",
+        "refId": "A"
+      }],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    },
+
+    {
+      "id": 30,
+      "type": "logs",
+      "title": "Tüm Servisler — Yalnızca Hatalar",
+      "description": "Tüm container'lardaki ERROR seviyeli loglar",
+      "gridPos": { "x": 0, "y": 29, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki-eco" },
+      "targets": [{
+        "datasource": { "type": "loki", "uid": "loki-eco" },
+        "expr": "{compose_project=\"eco-terminal\"} |= \"ERROR\"",
+        "legendFormat": "",
+        "refId": "A"
+      }],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showLabels": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    }
+
+  ]
+}

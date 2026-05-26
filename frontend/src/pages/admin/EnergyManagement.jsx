@@ -163,7 +163,7 @@ export default function EnergyManagement() {
     try {
       // Flask AI servisine doğrudan gitmiyor — backend proxy üzerinden
       const res = await import('../../api/axiosInstance').then(m =>
-        m.default.get('/energy/recommendations/all')
+        m.default.get('/api/energy/recommendations/all')
       )
       setAiRecs(res.data?.recommendations ?? [])
     } catch {

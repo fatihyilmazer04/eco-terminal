@@ -68,6 +68,7 @@ export default function Navbar() {
             <NavLink to="/passenger/flights"   label="Uçuşlar" />
             <NavLink to="/passenger/route"     label="Rota Öner" />
             <NavLink to="/passenger/lounges"   label="Salonlar" />
+            <NavLink to="/passenger/rewards"   label="🌿 Ödüller" />
           </div>
 
           {/* Sağ: Actions */}
@@ -137,6 +138,7 @@ export default function Navbar() {
             <MobileLink to="/passenger/flights"   label="Uçuşlar"      onClick={() => setMobileOpen(false)} />
             <MobileLink to="/passenger/route"     label="Rota Öner"    onClick={() => setMobileOpen(false)} />
             <MobileLink to="/passenger/lounges"        label="Salonlar"           onClick={() => setMobileOpen(false)} />
+            <MobileLink to="/passenger/rewards"        label="🌿 Ödüller"          onClick={() => setMobileOpen(false)} />
             <MobileLink to="/passenger/notifications"   label={`Bildirimler${unreadCount > 0 ? ` (${unreadCount})` : ''}`} onClick={() => setMobileOpen(false)} />
             <MobileLink to="/passenger/profile"         label="Profilim"           onClick={() => setMobileOpen(false)} />
             {isAdmin && (
