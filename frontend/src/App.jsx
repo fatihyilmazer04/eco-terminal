@@ -9,6 +9,7 @@ import AdminLayout from './components/AdminLayout'
 import Navbar from './components/Navbar'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
 import PassengerDashboard from './pages/passenger/PassengerDashboard'
 import HeatmapPage from './pages/passenger/HeatmapPage'
 import FlightInfoPage from './pages/passenger/FlightInfoPage'
@@ -87,8 +88,9 @@ function AppRoutes() {
       <Route path="/" element={<RootRedirect />} />
 
       {/* Auth — herkese açık */}
-      <Route path="/login"    element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/login"            element={<LoginPage />} />
+      <Route path="/register"         element={<RegisterPage />} />
+      <Route path="/forgot-password"  element={<ForgotPasswordPage />} />
 
       {/* Yolcu rotaları — Navbar dahil */}
       <Route path="/passenger/dashboard"      element={<PassengerPage><PassengerDashboard /></PassengerPage>} />

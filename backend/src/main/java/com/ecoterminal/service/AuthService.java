@@ -4,6 +4,8 @@ import com.ecoterminal.exception.BusinessException;
 import com.ecoterminal.model.dto.AuthResponse;
 import com.ecoterminal.model.dto.LoginRequest;
 import com.ecoterminal.model.dto.RegisterRequest;
+import com.ecoterminal.model.dto.ForgotPasswordRequest;
+import com.ecoterminal.model.dto.ResetPasswordRequest;
 import com.ecoterminal.model.dto.SendCodeRequest;
 import com.ecoterminal.model.dto.VerifyRegisterRequest;
 import com.ecoterminal.model.entity.Role;
@@ -215,5 +217,43 @@ public class AuthService {
                 principal.getEmail(),
                 fullName
         );
+    }
+
+    // ── Şifre Sıfırlama ───────────────────────────────────────────────────────
+
+    /**
+     * Şifre sıfırlama kodu gönderir.
+     * Güvenlik gereği: email kayıtlı olmasa da aynı başarı mesajı döner
+     * (email var/yok bilgisi dışarı sızdırılmaz).
+     */
+    @Transactional
+    public void sendPasswordResetCode(ForgotPasswordRequest req) {
+        boolean exists = userRepository.existsByEmail(req.email());
+        if (exists) {
+            verificationService.generateAndSend(req.email(), "PASSWORD_RESET");
+            log.info("Şifre sıfırlama kodu gönderildi: {}", req.email());
+        } else {
+            log.debug("Şifre sıfırlama: email kayıtlı değil, sessiz geçildi: {}", req.email());
+        }
+        // Her iki durumda da başarılı cevap dönülür — caller bunu mesaj olarak iletir
+    }
+
+    /**
+     * Kodu doğrula ve şifreyi güncelle.
+     */
+    @Transactional
+    public void resetPassword(ResetPasswordRequest req) {
+        boolean valid = verificationService.verify(req.email(), req.code(), "PASSWORD_RESET");
+        if (!valid) {
+            throw new BusinessException("Kod hatalı veya süresi dolmuş", HttpStatus.BAD_REQUEST);
+        }
+
+        User user = userRepository.findByEmail(req.email())
+                .orElseThrow(() -> BusinessException.notFound("Kullanıcı"));
+
+        user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
+        userRepository.save(user);
+
+        log.info("Şifre güncellendi: userId={}", user.getUserId());
     }
 }

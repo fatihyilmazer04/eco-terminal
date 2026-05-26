@@ -6,6 +6,8 @@ import com.ecoterminal.model.dto.AuthResponse;
 import com.ecoterminal.model.dto.LoginRequest;
 import com.ecoterminal.model.dto.RefreshTokenRequest;
 import com.ecoterminal.model.dto.RegisterRequest;
+import com.ecoterminal.model.dto.ForgotPasswordRequest;
+import com.ecoterminal.model.dto.ResetPasswordRequest;
 import com.ecoterminal.model.dto.SendCodeRequest;
 import com.ecoterminal.model.dto.VerifyRegisterRequest;
 import com.ecoterminal.service.AuthService;
@@ -113,6 +115,27 @@ public class AuthController {
     ) {
         AuthResponse authResponse = authService.refreshToken(request.refreshToken());
         return ResponseEntity.ok(ApiResponse.ok(authResponse, "Token yenilendi"));
+    }
+
+    // ── POST /api/auth/forgot-password ────────────────────────────────────────
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request
+    ) {
+        authService.sendPasswordResetCode(request);
+        return ResponseEntity.ok(ApiResponse.ok(null,
+                "Eğer bu e-posta kayıtlıysa, doğrulama kodu gönderildi"));
+    }
+
+    // ── POST /api/auth/reset-password ─────────────────────────────────────────
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request
+    ) {
+        authService.resetPassword(request);
+        return ResponseEntity.ok(ApiResponse.ok(null, "Şifreniz başarıyla güncellendi"));
     }
 
     // ── Yardımcı Metotlar ─────────────────────────────────────────────────

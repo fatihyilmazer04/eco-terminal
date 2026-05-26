@@ -119,6 +119,16 @@ export default function LoginPage() {
               )}
             </div>
 
+            {/* Şifremi Unuttum */}
+            <div className="flex justify-end -mt-1">
+              <Link
+                to="/forgot-password"
+                className="text-xs text-gray-500 hover:text-eco-green transition-colors"
+              >
+                Şifremi Unuttum?
+              </Link>
+            </div>
+
             {/* Giriş Butonu */}
             <button
               type="submit"

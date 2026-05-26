@@ -56,7 +56,11 @@ public class VerificationService {
                 .build();
         codeRepository.save(entity);
 
-        emailService.sendVerificationCode(email, code);
+        if ("PASSWORD_RESET".equals(purpose)) {
+            emailService.sendPasswordResetCode(email, code);
+        } else {
+            emailService.sendVerificationCode(email, code);
+        }
         log.info("[VERIF] Kod oluşturuldu ve gönderildi: email={}, purpose={}", email, purpose);
         return true;
     }

@@ -33,6 +33,20 @@ export const authApi = {
   },
 
   /**
+   * POST /api/auth/forgot-password
+   */
+  forgotPassword(email) {
+    return axiosInstance.post('/api/auth/forgot-password', { email })
+  },
+
+  /**
+   * POST /api/auth/reset-password
+   */
+  resetPassword({ email, code, newPassword }) {
+    return axiosInstance.post('/api/auth/reset-password', { email, code, newPassword })
+  },
+
+  /**
    * POST /api/auth/refresh
    */
   refresh(refreshToken) {
