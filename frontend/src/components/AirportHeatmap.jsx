@@ -190,54 +190,52 @@ function Tooltip({ zone, x, y }) {
   )
 }
 
-// ── Rota çizgisi (animasyonlu) ──────────────────────────────────────────────
-function RoutePath({ steps }) {
-  // Sadece koordinatı olan adımlar
+// ── Rota çizgisi (animasyonlu, tamamlanan segmentler parlak) ───────────────
+function RoutePath({ steps, completedSteps = new Set() }) {
   const pts = steps.filter(s => s.posX != null && s.posY != null)
   if (pts.length < 2) return null
 
-  const pointsStr = pts.map(s => `${tx(s.posX)},${ty(s.posY)}`).join(' ')
-
   return (
     <g>
-      {/* Glow / halo katmanı */}
+      {/* Tüm rota: soluk arka plan çizgisi */}
       <polyline
-        points={pointsStr}
-        fill="none"
-        stroke="#2ECC71"
-        strokeWidth={12}
-        strokeOpacity={0.12}
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        points={pts.map(s => `${tx(s.posX)},${ty(s.posY)}`).join(' ')}
+        fill="none" stroke="#2ECC71" strokeWidth={3.5}
+        strokeOpacity={0.2} strokeLinecap="round" strokeLinejoin="round"
+        strokeDasharray="8 6"
       />
-      {/* Orta glow */}
-      <polyline
-        points={pointsStr}
-        fill="none"
-        stroke="#2ECC71"
-        strokeWidth={6}
-        strokeOpacity={0.25}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* Ana rota çizgisi — animasyonlu çizilme */}
-      <polyline
-        points={pointsStr}
-        fill="none"
-        stroke="#2ECC71"
-        strokeWidth={3.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeDasharray="4000"
-        strokeDashoffset="4000"
-        style={{ animation: 'route-draw 1.8s ease-out 0.3s forwards' }}
-      />
+      {/* Tamamlanan segmentler: parlak + glow */}
+      {pts.slice(0, -1).map((s, i) => {
+        const next = pts[i + 1]
+        if (!completedSteps.has(s.stepNumber)) return null
+        const seg = `${tx(s.posX)},${ty(s.posY)} ${tx(next.posX)},${ty(next.posY)}`
+        return (
+          <g key={`seg-${i}`}>
+            <polyline points={seg} fill="none" stroke="#2ECC71"
+              strokeWidth={10} strokeOpacity={0.15}
+              strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points={seg} fill="none" stroke="#2ECC71"
+              strokeWidth={4} strokeOpacity={0.9}
+              strokeLinecap="round" strokeLinejoin="round" />
+          </g>
+        )
+      })}
+      {/* Tüm rota: ilk açılışta animasyonlu çizim (completedSteps yoksa) */}
+      {completedSteps.size === 0 && (
+        <polyline
+          points={pts.map(s => `${tx(s.posX)},${ty(s.posY)}`).join(' ')}
+          fill="none" stroke="#2ECC71" strokeWidth={3.5}
+          strokeLinecap="round" strokeLinejoin="round"
+          strokeDasharray="4000" strokeDashoffset="4000"
+          style={{ animation: 'route-draw 1.8s ease-out 0.3s forwards' }}
+        />
+      )}
     </g>
   )
 }
 
 // ── Rota durak işaretçileri ─────────────────────────────────────────────────
-function RouteMarkers({ steps, activeStepNumber, onStepClick }) {
+function RouteMarkers({ steps, activeStepNumber, completedSteps = new Set(), onStepClick }) {
   const pts = steps.filter(s => s.posX != null && s.posY != null)
   if (pts.length === 0) return null
 
@@ -246,12 +244,20 @@ function RouteMarkers({ steps, activeStepNumber, onStepClick }) {
       {pts.map((step, i) => {
         const cx = tx(step.posX)
         const cy = ty(step.posY)
-        const isFirst  = i === 0
-        const isLast   = i === pts.length - 1
-        const isActive = step.stepNumber === activeStepNumber
+        const isFirst     = i === 0
+        const isLast      = i === pts.length - 1
+        const isActive    = step.stepNumber === activeStepNumber
+        const isCompleted = completedSteps.has(step.stepNumber)
 
-        const bgColor = isLast ? '#3B82F6' : isFirst ? '#2ECC71' : '#1D4ED8'
+        // Renk: tamamlanan → parlak yeşil, aktif → canlı yeşil, gelecek → gri, son → mavi
+        const bgColor = isCompleted ? '#2ECC71'
+          : isActive  ? '#16A34A'
+          : isLast    ? '#3B82F6'
+          : isFirst   ? '#2ECC71'
+          : '#4B5563'   // tamamlanmamış ara durak → gri
+
         const r = isActive ? 18 : 14
+        const opacity = isCompleted || isActive || isFirst || isLast ? 0.95 : 0.55
 
         return (
           <g
@@ -267,20 +273,32 @@ function RouteMarkers({ steps, activeStepNumber, onStepClick }) {
                 style={{ animation: 'pulse-ring 1.5s ease-in-out infinite' }}
               />
             )}
+            {/* Tamamlanan parlama halkası */}
+            {isCompleted && !isActive && (
+              <circle cx={cx} cy={cy} r={r + 4}
+                fill="#2ECC71" opacity={0.15} />
+            )}
             {/* İşaretçi arka planı */}
             <circle cx={cx} cy={cy} r={r}
               fill={bgColor}
-              stroke="#FFFFFF" strokeWidth={isActive ? 2.5 : 1.5}
-              opacity={0.95}
+              stroke={isCompleted ? '#FFFFFF' : isActive ? '#FFFFFF' : '#6B7280'}
+              strokeWidth={isActive ? 2.5 : isCompleted ? 2 : 1.5}
+              opacity={opacity}
             />
             {/* İçerik */}
-            {isFirst ? (
+            {isCompleted ? (
+              <text x={cx} y={cy + 5} textAnchor="middle" fontSize={14}
+                fill="#FFFFFF" fontWeight="900"
+                style={{ userSelect: 'none', pointerEvents: 'none' }}>
+                ✓
+              </text>
+            ) : isFirst && !completedSteps.has(step.stepNumber) ? (
               <text x={cx} y={cy + 5} textAnchor="middle" fontSize={13}
                 fill="#FFFFFF" fontWeight="900"
                 style={{ userSelect: 'none', pointerEvents: 'none' }}>
                 ▶
               </text>
-            ) : isLast ? (
+            ) : isLast && !completedSteps.has(step.stepNumber) ? (
               <text x={cx} y={cy + 5} textAnchor="middle" fontSize={13}
                 fill="#FFFFFF" fontWeight="900"
                 style={{ userSelect: 'none', pointerEvents: 'none' }}>
@@ -309,6 +327,7 @@ function RouteMarkers({ steps, activeStepNumber, onStepClick }) {
  * @param {number}   selectedZoneId   - Seçili zone ID'si
  * @param {Array}    routeSteps       - (opsiyonel) Rota adımları [{stepNumber, zoneName, posX, posY, ...}]
  * @param {number}   activeStepNumber - (opsiyonel) Aktif/seçili adım numarası
+ * @param {Set}      completedSteps   - (opsiyonel) Tamamlanan adım numaraları (Set<number>)
  * @param {Function} onRouteStepClick - (opsiyonel) (stepNumber) => void
  */
 export default function AirportHeatmap({
@@ -317,6 +336,7 @@ export default function AirportHeatmap({
   selectedZoneId,
   routeSteps,
   activeStepNumber,
+  completedSteps = new Set(),
   onRouteStepClick,
 }) {
   const [tooltip, setTooltip] = useState({ zone: null, svgX: 0, svgY: 0 })
@@ -472,13 +492,14 @@ export default function AirportHeatmap({
         })}
 
         {/* ── Rota çizgisi (routeSteps varsa) ─────────────────────────── */}
-        {hasRoute && <RoutePath steps={routeSteps} />}
+        {hasRoute && <RoutePath steps={routeSteps} completedSteps={completedSteps} />}
 
         {/* ── Rota durak işaretçileri ──────────────────────────────────── */}
         {hasRoute && (
           <RouteMarkers
             steps={routeSteps}
             activeStepNumber={activeStepNumber}
+            completedSteps={completedSteps}
             onStepClick={onRouteStepClick}
           />
         )}

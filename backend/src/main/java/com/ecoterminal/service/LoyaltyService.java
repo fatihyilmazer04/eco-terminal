@@ -140,12 +140,13 @@ public class LoyaltyService {
 
     public int calculatePointsForAction(String action) {
         return switch (action.toUpperCase()) {
-            case "QUIET_ZONE_WAIT"  -> 10;
-            case "FLIGHT_CHECKIN"   -> 25;
-            case "ECO_ROUTE_USED"   -> 15;
-            case "ROUTE_SELECTION"  -> 50;
-            case "LOUNGE_CHECKIN"   -> 20;
-            default                 -> 5;
+            case "QUIET_ZONE_WAIT"   -> 10;
+            case "FLIGHT_CHECKIN"    -> 25;
+            case "ECO_ROUTE_USED"    -> 15;
+            case "ROUTE_SELECTION"   -> 50;   // geriye uyumluluk
+            case "ROUTE_COMPLETION"  -> 50;   // yeni: adım bazlı doğrulamalı rota tamamlama
+            case "LOUNGE_CHECKIN"    -> 20;
+            default                  -> 5;
         };
     }
 
