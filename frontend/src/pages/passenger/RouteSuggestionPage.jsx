@@ -1,7 +1,9 @@
 import React, { useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useSuggestedRoute, useAlternatives } from '../../hooks/useFlights'
+import { useHeatmap } from '../../hooks/useHeatmap'
 import OccupancyCard from '../../components/OccupancyCard'
+import AirportHeatmap from '../../components/AirportHeatmap'
 import { loyaltyApi } from '../../api/loyaltyApi'
 import { ACTION_POINTS } from '../../hooks/useLoyalty'
 import toast from 'react-hot-toast'
@@ -20,23 +22,29 @@ const LEVEL_LABELS = {
   CRITICAL: 'Kritik',
 }
 
-function StepCard({ step }) {
+function StepCard({ step, isActive, onClick }) {
   const isBusy = step.densityLevel === 'HIGH' || step.densityLevel === 'CRITICAL'
   const color  = LEVEL_COLORS[step.densityLevel] ?? '#9CA3AF'
   const label  = LEVEL_LABELS[step.densityLevel] ?? step.densityLevel
+  const hasMap = step.posX != null && step.posY != null
 
   return (
-    <div className={`
-      flex gap-4 p-4 rounded-xl border transition-colors
-      ${isBusy
-        ? 'bg-yellow-500/5 border-yellow-500/20'
-        : 'bg-gray-800 border-gray-700'}
-    `}>
+    <div
+      className={`
+        flex gap-4 p-4 rounded-xl border transition-all cursor-pointer
+        ${isActive
+          ? 'bg-eco-green/10 border-eco-green/50 ring-1 ring-eco-green/30'
+          : isBusy
+            ? 'bg-yellow-500/5 border-yellow-500/20 hover:border-yellow-500/40'
+            : 'bg-gray-800 border-gray-700 hover:border-gray-600'}
+      `}
+      onClick={onClick}
+    >
       {/* Numara çemberi */}
       <div
         className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center
                    text-sm font-bold text-gray-900"
-        style={{ backgroundColor: color }}
+        style={{ backgroundColor: isActive ? '#2ECC71' : color }}
       >
         {step.stepNumber}
       </div>
@@ -45,22 +53,24 @@ function StepCard({ step }) {
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="text-sm font-medium text-white">{step.instruction}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{step.zoneName}</p>
+            <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5">
+              {step.zoneName}
+              {hasMap && (
+                <span className="text-eco-green/60">● haritada</span>
+              )}
+            </p>
           </div>
           <div className="flex-shrink-0 flex flex-col items-end gap-1">
-            {/* Density chip */}
             <span
               className="text-xs px-2 py-0.5 rounded-full font-medium"
               style={{ color, backgroundColor: color + '20', border: `1px solid ${color}40` }}
             >
               {label}
             </span>
-            {/* Yürüyüş süresi */}
             <span className="text-xs text-gray-500">~{step.estimatedWalkMinutes} dk</span>
           </div>
         </div>
 
-        {/* Uyarı ikonu — yoğun bölgeler için */}
         {isBusy && (
           <div className="mt-2 flex items-center gap-1.5 text-yellow-400 text-xs">
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -77,8 +87,10 @@ function StepCard({ step }) {
 export default function RouteSuggestionPage() {
   const [searchParams] = useSearchParams()
   const { data: route, loading, error } = useSuggestedRoute()
+  const { data: heatmapData } = useHeatmap(60000)
   const [routeSelected, setRouteSelected] = useState(false)
   const [earning, setEarning] = useState(false)
+  const [activeStep, setActiveStep] = useState(null)
 
   const handleSelectRoute = async () => {
     if (routeSelected || earning) return
@@ -96,11 +108,11 @@ export default function RouteSuggestionPage() {
     }
   }
 
-  // Hedef kapı zoneId'yi alternatifler için bul
-  const targetZoneId = route?.steps?.at(-1)
-    ? null  // RouteResponse'ta zoneId yok, alternatifler genel olarak çekilecek
-    : null
-  const { data: alternatives } = useAlternatives(1) // Gate A1 default
+  const handleStepClick = (stepNumber) => {
+    setActiveStep(prev => prev === stepNumber ? null : stepNumber)
+  }
+
+  const { data: alternatives } = useAlternatives(1)
 
   if (loading) {
     return (
@@ -142,7 +154,8 @@ export default function RouteSuggestionPage() {
     </div>
   )
 
-  const totalMins = parseInt(route.estimatedTotalWalkMinutes) || 0
+  const heatmapZones = heatmapData?.zones ?? []
+  const hasMapCoords = heatmapZones.some(z => z.posX != null)
 
   return (
     <div className="min-h-screen bg-gray-900 p-6">
@@ -184,10 +197,25 @@ export default function RouteSuggestionPage() {
       </div>
 
       {/* Adım Adım Rota */}
-      <h2 className="text-base font-semibold text-white mb-3">Güzergah</h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-base font-semibold text-white">Güzergah</h2>
+        {activeStep != null && (
+          <button
+            onClick={() => setActiveStep(null)}
+            className="text-xs text-gray-500 hover:text-white transition-colors"
+          >
+            Seçimi temizle ✕
+          </button>
+        )}
+      </div>
       <div className="flex flex-col gap-3 mb-4">
         {route.steps.map(step => (
-          <StepCard key={step.stepNumber} step={step} />
+          <StepCard
+            key={step.stepNumber}
+            step={step}
+            isActive={activeStep === step.stepNumber}
+            onClick={() => handleStepClick(step.stepNumber)}
+          />
         ))}
       </div>
 
@@ -213,6 +241,42 @@ export default function RouteSuggestionPage() {
           <>🌿 Bu Rotayı Seç — +50 Eko-Puan Kazan</>
         )}
       </button>
+
+      {/* ── Terminal Haritası ─────────────────────────────────────── */}
+      {hasMapCoords && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-base font-semibold text-white">Terminal Haritası</h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Adımlara tıklayarak haritada konumu görebilirsiniz
+              </p>
+            </div>
+            {activeStep != null && (
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full
+                              bg-eco-green/10 border border-eco-green/30">
+                <span className="w-2 h-2 rounded-full bg-eco-green animate-pulse" />
+                <span className="text-xs text-eco-green font-medium">
+                  Durak {activeStep}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <AirportHeatmap
+            zones={heatmapZones}
+            onZoneClick={() => {}}
+            selectedZoneId={null}
+            routeSteps={route.steps}
+            activeStepNumber={activeStep}
+            onRouteStepClick={handleStepClick}
+          />
+
+          <p className="text-center text-xs text-gray-600 mt-2">
+            Haritadaki numaralı duraklara tıklayarak güzergah adımlarını inceleyin
+          </p>
+        </div>
+      )}
 
       {/* Alternatif Sakin Alanlar */}
       {alternatives.length > 0 && (

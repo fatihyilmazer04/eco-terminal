@@ -6,6 +6,7 @@ import com.ecoterminal.model.dto.RouteStep;
 import com.ecoterminal.model.dto.ZoneOccupancyResponse;
 import com.ecoterminal.model.entity.*;
 import com.ecoterminal.repository.TicketRepository;
+import com.ecoterminal.repository.ZoneMapPositionRepository;
 import com.ecoterminal.repository.ZoneRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,7 @@ public class RouteService {
     private final TicketRepository ticketRepository;
     private final ZoneRepository zoneRepository;
     private final OccupancyService occupancyService;
+    private final ZoneMapPositionRepository zoneMapPositionRepository;
 
     // ── Kullanıcı için kişisel rota önerisi ──────────────────────────────
 
@@ -51,6 +53,23 @@ public class RouteService {
 
         // Rota adımlarını oluştur
         List<RouteStep> steps = buildRouteSteps(allZones, targetGate);
+
+        // Harita koordinatlarını zenginleştir (zone_map_positions'tan merkez X/Y)
+        Map<String, ZoneMapPosition> posMap = zoneMapPositionRepository.findAllActiveZonePositions()
+                .stream()
+                .collect(Collectors.toMap(p -> p.getZone().getZoneName(), p -> p));
+
+        steps = steps.stream().map(step -> {
+            ZoneMapPosition pos = posMap.get(step.zoneName());
+            if (pos != null) {
+                double cx = pos.getPosX() + pos.getWidth()  / 2.0;
+                double cy = pos.getPosY() + pos.getHeight() / 2.0;
+                return new RouteStep(step.stepNumber(), step.zoneName(), step.instruction(),
+                        step.estimatedWalkMinutes(), step.densityLevel(), cx, cy);
+            }
+            return new RouteStep(step.stepNumber(), step.zoneName(), step.instruction(),
+                    step.estimatedWalkMinutes(), step.densityLevel(), null, null);
+        }).toList();
 
         // Ortalama rota yoğunluğu (0.0–1.0)
         float avgDensity = (float) steps.stream()
@@ -108,7 +127,8 @@ public class RouteService {
                 checkin != null ? checkin.zoneName() : "Check-In",
                 "Check-In bölgesinden çıkın ve Ana Koridor'a yönelin",
                 3,
-                checkin != null ? checkin.densityLevel() : DensityLevel.LOW
+                checkin != null ? checkin.densityLevel() : DensityLevel.LOW,
+                null, null
         ));
 
         // Adım 2: Güvenlik
@@ -124,16 +144,18 @@ public class RouteService {
                 security != null ? security.zoneName() : "Security",
                 securityInstruction,
                 5,
-                security != null ? security.densityLevel() : DensityLevel.LOW
+                security != null ? security.densityLevel() : DensityLevel.LOW,
+                null, null
         ));
 
-        // Adım 3: Yolcu alanına geçiş (sabit koridor adımı)
+        // Adım 3: Yolcu alanına geçiş (sabit koridor adımı — haritada zona yok)
         steps.add(new RouteStep(
                 stepNum++,
                 "Yolcu Alanı",
                 "Yolcu bölümüne giriş yapın, sağa dönün",
                 2,
-                DensityLevel.LOW
+                DensityLevel.LOW,
+                null, null
         ));
 
         // Adım 4: Lounge / bekleme katı
@@ -143,7 +165,8 @@ public class RouteService {
                 lounge != null ? lounge.zoneName() : "Bekleme Salonu",
                 "Kapılar koridoruna ilerleyin — Bekleme Salonu solunuzda",
                 3,
-                lounge != null ? lounge.densityLevel() : DensityLevel.LOW
+                lounge != null ? lounge.densityLevel() : DensityLevel.LOW,
+                null, null
         ));
 
         // Adım 5: Hedef kapı
@@ -159,7 +182,8 @@ public class RouteService {
                 gateName,
                 gateName + "'a ulaştınız — biniş başlamak üzere",
                 1,
-                gateDl
+                gateDl,
+                null, null
         ));
 
         return steps;

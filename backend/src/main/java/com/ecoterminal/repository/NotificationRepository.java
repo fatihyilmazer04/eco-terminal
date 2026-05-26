@@ -1,6 +1,7 @@
 package com.ecoterminal.repository;
 
 import com.ecoterminal.model.entity.Notification;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -11,6 +12,10 @@ import java.util.List;
 
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
 
+    /** En yeni 50 bildirim — sayfalı, tüm listeyi çekmez */
+    List<Notification> findByUser_UserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
+
+    /** Geriye dönük uyumluluk için limitsiz — iç kullanım */
     List<Notification> findByUser_UserIdOrderByCreatedAtDesc(Long userId);
 
     List<Notification> findByUser_UserIdAndIsReadFalse(Long userId);

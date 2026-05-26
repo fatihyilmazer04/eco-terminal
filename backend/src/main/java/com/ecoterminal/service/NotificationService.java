@@ -7,6 +7,7 @@ import com.ecoterminal.model.entity.*;
 import com.ecoterminal.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -168,7 +169,8 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public List<NotificationResponse> getMyNotifications(Long userId) {
-        return notifRepository.findByUser_UserIdOrderByCreatedAtDesc(userId)
+        return notifRepository.findByUser_UserIdOrderByCreatedAtDesc(
+                        userId, PageRequest.of(0, 50))
                 .stream()
                 .map(NotificationResponse::from)
                 .toList();

@@ -13,6 +13,8 @@ public interface ZoneMapPositionRepository extends JpaRepository<ZoneMapPosition
 
     Optional<ZoneMapPosition> findByZone_ZoneId(Long zoneId);
 
+    Optional<ZoneMapPosition> findByZone_ZoneName(String zoneName);
+
     /**
      * Aktif zone'ların tüm harita pozisyonlarını tek sorguda döndürür.
      * Zone JOIN ile aktif olmayanları filtreler.
