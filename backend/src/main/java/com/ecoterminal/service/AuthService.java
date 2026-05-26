@@ -4,6 +4,8 @@ import com.ecoterminal.exception.BusinessException;
 import com.ecoterminal.model.dto.AuthResponse;
 import com.ecoterminal.model.dto.LoginRequest;
 import com.ecoterminal.model.dto.RegisterRequest;
+import com.ecoterminal.model.dto.SendCodeRequest;
+import com.ecoterminal.model.dto.VerifyRegisterRequest;
 import com.ecoterminal.model.entity.Role;
 import com.ecoterminal.model.entity.User;
 import com.ecoterminal.model.entity.UserProfile;
@@ -36,6 +38,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final CustomUserDetailsService userDetailsService;
+    private final VerificationService verificationService;
 
     /**
      * Kullanıcı girişi.
@@ -119,6 +122,67 @@ public class AuthService {
                 user.getUserId(),
                 user.getEmail(),
                 request.fullName()
+        );
+    }
+
+    // ── Email Doğrulamalı Kayıt (2 adım) ──────────────────────────────────────
+
+    /**
+     * Adım 1: Email'e doğrulama kodu gönder.
+     * Hesap henüz oluşturulmaz — sadece kod gönderilir.
+     */
+    @Transactional
+    public void sendRegisterCode(SendCodeRequest req) {
+        if (userRepository.existsByEmail(req.email())) {
+            throw BusinessException.conflict("Bu e-posta adresi zaten kayıtlı");
+        }
+        verificationService.generateAndSend(req.email(), "REGISTER");
+        log.info("Kayıt doğrulama kodu gönderildi: {}", req.email());
+    }
+
+    /**
+     * Adım 2: Kodu doğrula → başarılıysa User + UserProfile oluştur, JWT dön.
+     */
+    @Transactional
+    public AuthResponse verifyAndRegister(VerifyRegisterRequest req) {
+        // Kod doğrula
+        boolean valid = verificationService.verify(req.email(), req.code(), "REGISTER");
+        if (!valid) {
+            throw new BusinessException("Kod hatalı veya süresi dolmuş", HttpStatus.BAD_REQUEST);
+        }
+
+        // Kayıt sırasında email tekrar kayıtlı oldu mu?
+        if (userRepository.existsByEmail(req.email())) {
+            throw BusinessException.conflict("Bu e-posta adresi zaten kayıtlı");
+        }
+
+        User user = User.builder()
+                .email(req.email())
+                .passwordHash(passwordEncoder.encode(req.password()))
+                .role(Role.USER)
+                .isActive(true)
+                .emailVerified(true)
+                .build();
+        user = userRepository.save(user);
+
+        UserProfile profile = UserProfile.builder()
+                .user(user)
+                .fullName(req.fullName())
+                .build();
+        userProfileRepository.save(profile);
+
+        UserDetails userDetails = new UserPrincipal(user);
+        String accessToken  = jwtService.generateAccessToken(userDetails);
+        String refreshToken = jwtService.generateRefreshToken(userDetails);
+
+        log.info("Email doğrulamalı kayıt tamamlandı: {} | id: {}", user.getEmail(), user.getUserId());
+
+        return new AuthResponse(
+                accessToken, refreshToken,
+                user.getRole().name(),
+                user.getUserId(),
+                user.getEmail(),
+                req.fullName()
         );
     }
 

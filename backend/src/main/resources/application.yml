@@ -52,6 +52,22 @@ spring:
     baseline-on-migrate: true
     validate-on-migrate: true
 
+# ── Email (SMTP) ─────────────────────────────────────────────────────────────
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    test-connection: false        # Startup'ta SMTP bağlantısı test edilmesin
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+        debug: false
+
 # ── JWT ─────────────────────────────────────────────────────────────────────
 jwt:
   # Üretimde mutlaka güçlü, rastgele 256-bit Base64 secret kullanın
@@ -84,6 +100,9 @@ management:
   endpoint:
     health:
       show-details: always
+  health:
+    mail:
+      enabled: false            # SMTP credentialı olmadan startup health'i bozmaz
   metrics:
     export:
       prometheus:
@@ -102,6 +121,13 @@ logging:
 spring.task.scheduling:
   pool:
     size: 4
+
+# ── Mail Modu ────────────────────────────────────────────────────────────────
+# true  → JavaMailSender ile gerçek Gmail SMTP kullan
+# false → DEMO MODU: kod sadece backend log'una yazılır, mail gönderilmez
+app:
+  mail:
+    enabled: ${MAIL_ENABLED:false}
 
 # ── Demo Veri Tazeleme ────────────────────────────────────────────────────────
 # false yapılınca DemoDataRefresher çalışmaz (production ortamı için)

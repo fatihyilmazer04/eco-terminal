@@ -126,6 +126,12 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
+        <!-- Email — SMTP ile doğrulama kodu gönderimi -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- Firebase Admin SDK — FCM push bildirimleri için -->
         <dependency>
             <groupId>com.google.firebase</groupId>

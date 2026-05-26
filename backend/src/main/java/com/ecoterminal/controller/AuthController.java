@@ -6,6 +6,8 @@ import com.ecoterminal.model.dto.AuthResponse;
 import com.ecoterminal.model.dto.LoginRequest;
 import com.ecoterminal.model.dto.RefreshTokenRequest;
 import com.ecoterminal.model.dto.RegisterRequest;
+import com.ecoterminal.model.dto.SendCodeRequest;
+import com.ecoterminal.model.dto.VerifyRegisterRequest;
 import com.ecoterminal.service.AuthService;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
@@ -78,6 +80,27 @@ public class AuthController {
             @Valid @RequestBody RegisterRequest request
     ) {
         AuthResponse authResponse = authService.register(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(authResponse, "Kayıt başarılı"));
+    }
+
+    // ── POST /api/auth/register/send-code ─────────────────────────────────────
+
+    @PostMapping("/register/send-code")
+    public ResponseEntity<ApiResponse<Void>> sendRegisterCode(
+            @Valid @RequestBody SendCodeRequest request
+    ) {
+        authService.sendRegisterCode(request);
+        return ResponseEntity.ok(ApiResponse.ok(null, "Doğrulama kodu e-posta adresinize gönderildi"));
+    }
+
+    // ── POST /api/auth/register/verify ────────────────────────────────────────
+
+    @PostMapping("/register/verify")
+    public ResponseEntity<ApiResponse<AuthResponse>> verifyAndRegister(
+            @Valid @RequestBody VerifyRegisterRequest request
+    ) {
+        AuthResponse authResponse = authService.verifyAndRegister(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.ok(authResponse, "Kayıt başarılı"));
     }

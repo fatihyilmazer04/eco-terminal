@@ -84,6 +84,21 @@ export function AuthProvider({ children }) {
     return role
   }
 
+  /**
+   * Email doğrulama sonrası token'ları direkt set eder (API çağrısı yapmaz).
+   * verifyRegister endpoint'inden dönen AuthResponse objesi alır.
+   */
+  function loginWithTokens({ accessToken, refreshToken, role, userId, email, fullName }) {
+    const user = { userId, email, role, fullName }
+
+    localStorage.setItem('accessToken', accessToken)
+    localStorage.setItem('refreshToken', refreshToken)
+    localStorage.setItem('user', JSON.stringify(user))
+
+    dispatch({ type: 'LOGIN_SUCCESS', payload: { user, accessToken } })
+    return role
+  }
+
   function logout() {
     clearStorage()
     dispatch({ type: 'LOGOUT' })
@@ -94,7 +109,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, register, isAdmin }}>
+    <AuthContext.Provider value={{ ...state, login, logout, register, loginWithTokens, isAdmin }}>
       {children}
     </AuthContext.Provider>
   )

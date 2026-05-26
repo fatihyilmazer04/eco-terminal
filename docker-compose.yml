@@ -68,6 +68,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-dev}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_ENABLED: ${MAIL_ENABLED:-false}
     ports:
       - "8080:8080"
     depends_on:
