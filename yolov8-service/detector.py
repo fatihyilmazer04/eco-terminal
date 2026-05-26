@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import numpy as np
 import psycopg2
 import psycopg2.extras
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from config import (
     DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD,
@@ -87,29 +87,42 @@ def _get_all_active_zones() -> list[dict]:
         return []
 
 
-# ── Sentetik frame üretici ───────────────────────────────────────────────────
+# ── Sentetik kişi sayısı hesaplayıcı ────────────────────────────────────────
+def _compute_synthetic_count(zone_id: int, hour: int, capacity: int) -> int:
+    """
+    Saat ve zone index'e göre gerçekçi kişi sayısı üretir.
+    Numpy array attribute magic kullanmaz — saf hesaplama.
+    """
+    factor = HOUR_DENSITY_FACTOR[hour % 24]
+    factor = min(factor + (zone_id % 5) * 0.03, 1.0)
+    max_people = max(1, int(capacity * factor))
+    noise = random.randint(-max(1, max_people // 5), max(1, max_people // 5))
+    return max(0, min(capacity, max_people + noise))
+
+
 def generate_synthetic_frame(zone_id: int, hour: int,
                               capacity: int = 100) -> np.ndarray:
     """
-    Gerçek kamera olmadığında o zone ve saate özgü rastgele nokta
-    dağılımlı 640×480 BGR numpy array döndürür.
-    Noktalar YOLO ile algılanmaz — sadece density hesabı için kullanılır.
+    Görsel olarak kişileri temsil eden dikdörtgenler içeren 640×480
+    BGR numpy array döndürür. Sadece görsel amaçlıdır; kişi sayısı
+    _compute_synthetic_count ile ayrıca hesaplanır.
     """
-    factor = HOUR_DENSITY_FACTOR[hour % 24]
-    # Zone index'e göre küçük fark
-    factor = min(factor + (zone_id % 5) * 0.03, 1.0)
+    count = _compute_synthetic_count(zone_id, hour, capacity)
 
-    # Sentetik kişi sayısı
-    max_people = max(1, int(capacity * factor))
-    noise = random.randint(-max(1, max_people // 5), max(1, max_people // 5))
-    people_count = max(0, min(capacity, max_people + noise))
+    img = Image.new("RGB", (FRAME_WIDTH, FRAME_HEIGHT), color=(20, 20, 20))
+    draw = ImageDraw.Draw(img)
 
-    # Boş (siyah) frame — gerçek YOLO bunu işleyemez; sadece mock için
-    frame = np.zeros((FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8)
+    rng = random.Random(zone_id * 1000 + hour)
+    for _ in range(count):
+        x = rng.randint(10, FRAME_WIDTH - 30)
+        y = rng.randint(10, FRAME_HEIGHT - 60)
+        w, h = rng.randint(15, 25), rng.randint(40, 60)
+        r = rng.randint(150, 220)
+        g = rng.randint(100, 180)
+        b = rng.randint(80, 140)
+        draw.rectangle([x, y, x + w, y + h], fill=(r, g, b), outline=(255, 255, 255))
 
-    # people_count'u frame metadata olarak encode et (custom dict ile dönecek)
-    frame._synthetic_people = people_count  # type: ignore[attr-defined]
-    return frame
+    return np.array(img)
 
 
 # ── Ana tespit fonksiyonu ─────────────────────────────────────────────────────
@@ -122,6 +135,7 @@ def detect_crowd(
 ) -> dict:
     """
     YOLOv8 ile kişi say, density hesapla, DB'ye kaydet.
+    image_source=None → doğrudan sentetik sayım (kamera yok).
 
     Returns:
         {zone_id, people_count, density_pct, confidence, timestamp, source}
@@ -130,12 +144,12 @@ def detect_crowd(
     confidence_scores = []
     people_count = 0
 
-    # ── Sentetik frame kısayolu ───────────────────────────────────────────────
-    if isinstance(image_source, np.ndarray) and hasattr(image_source, "_synthetic_people"):
-        people_count = image_source._synthetic_people  # type: ignore[attr-defined]
+    if image_source is None:
+        # ── Kamera yok: sentetik sayım ───────────────────────────────────────
+        people_count = _compute_synthetic_count(zone_id, now.hour, capacity)
         confidence_scores = [0.90] * people_count
         source_tag = "yolov8_simulated"
-        logger.debug("Sentetik frame: zone=%d kişi=%d", zone_id, people_count)
+        logger.debug("Sentetik sayım: zone=%d kişi=%d", zone_id, people_count)
 
     else:
         # ── Gerçek YOLO inference ─────────────────────────────────────────────
@@ -169,7 +183,7 @@ def detect_crowd(
                     zone_id, people_count, density_pct, source_tag)
 
     return {
-        "zone_id":     zone_id,
+        "zone_id":      zone_id,
         "people_count": people_count,
         "density_pct":  round(density_pct, 4),
         "confidence":   round(avg_conf, 3),
@@ -180,23 +194,24 @@ def detect_crowd(
 
 def batch_detect_all_zones() -> list[dict]:
     """
-    Tüm aktif zone'lar için sentetik frame ile detection çalıştırır.
+    Tüm aktif zone'lar için sentetik sayım yapar, DB'ye kaydeder.
     APScheduler veya /detect/batch endpoint'i tarafından çağrılır.
     """
     zones = _get_all_active_zones()
-    hour = datetime.now(timezone.utc).hour
     results = []
 
     for zone in zones:
-        frame = generate_synthetic_frame(zone["zone_id"], hour, zone["max_capacity"])
+        zone_id  = zone["zone_id"]
+        capacity = zone.get("max_capacity") or zone.get("capacity") or 100
+        # Kamera yok → None geç, detect_crowd sentetik sayım yapar
         result = detect_crowd(
-            image_source=frame,
-            zone_id=zone["zone_id"],
-            capacity=zone["max_capacity"],
+            image_source=None,
+            zone_id=zone_id,
+            capacity=capacity,
             save_to_db=True,
             source_tag="yolov8_simulated",
         )
-        result["zone_name"] = zone["zone_name"]
+        result["zone_name"] = zone.get("zone_name", f"Zone {zone_id}")
         results.append(result)
 
     logger.info("Batch detection tamamlandı: %d zone", len(results))

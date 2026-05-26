@@ -14,10 +14,19 @@ const TABS = [
 export default function ProfilePage() {
   const [activeTab, setActiveTab]   = useState('profile')
   const [showRewards, setShowRewards] = useState(false)
-  const { profile, loading, updateProfile, updatePreferences } = useProfile()
+  const { profile, loading, error, updateProfile, updatePreferences } = useProfile()
   const { wallet, transactions, rewards, spendPoints } = useLoyalty()
 
   if (loading) return <PageSkeleton />
+
+  if (error && !profile) return (
+    <div className="min-h-screen bg-gray-900 p-6 flex items-center justify-center">
+      <div className="bg-gray-800 border border-red-500/30 rounded-xl p-6 max-w-sm w-full text-center">
+        <p className="text-red-400 font-medium mb-2">Profil yüklenemedi</p>
+        <p className="text-gray-500 text-sm">{error}</p>
+      </div>
+    </div>
+  )
 
   return (
     <div className="bg-gray-900 p-6">

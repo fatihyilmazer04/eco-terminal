@@ -2,12 +2,21 @@ import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { loyaltyApi } from '../api/loyaltyApi'
 
+// Aksiyon türlerine göre kazanılacak puan (backend ile senkron)
+export const ACTION_POINTS = {
+  ROUTE_SELECTION:  50,
+  FLIGHT_CHECKIN:   25,
+  LOUNGE_CHECKIN:   20,
+  ECO_ROUTE_USED:   15,
+  QUIET_ZONE_WAIT:  10,
+}
+
 export function useLoyalty() {
-  const [wallet, setWallet]           = useState(null)
+  const [wallet, setWallet]             = useState(null)
   const [transactions, setTransactions] = useState([])
-  const [rewards, setRewards]         = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [error, setError]             = useState(null)
+  const [rewards, setRewards]           = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [error, setError]               = useState(null)
 
   const fetchAll = useCallback(async () => {
     try {
@@ -41,11 +50,16 @@ export function useLoyalty() {
     }
   }, [fetchAll])
 
+  /**
+   * action: "ROUTE_SELECTION" | "FLIGHT_CHECKIN" | "ECO_ROUTE_USED" | "QUIET_ZONE_WAIT" | "LOUNGE_CHECKIN"
+   * Dönen WalletResponse ile setWallet güncellenir — tam re-fetch gerek yok.
+   */
   const earnPoints = useCallback(async (action) => {
     try {
       const res = await loyaltyApi.earn(action)
-      const data = res.data.data
-      toast.success(`🌿 Puan kazandınız! Toplam: ${data.currentBalance}`)
+      const data = res.data.data   // WalletResponse
+      const gained = ACTION_POINTS[action] ?? 5
+      toast.success(`🌿 +${gained} Eko-Puan kazandınız! Toplam: ${data.currentBalance}`)
       setWallet(data)
       return data
     } catch (err) {

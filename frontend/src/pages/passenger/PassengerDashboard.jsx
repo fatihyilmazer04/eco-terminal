@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useOccupancy } from '../../hooks/useOccupancy'
 import OccupancyCard from '../../components/OccupancyCard'
+import EcoPointsCard from '../../components/EcoPointsCard'
 import { useHeatmap } from '../../hooks/useHeatmap'
 
 function StatCard({ label, value, sub, color }) {
@@ -17,7 +18,7 @@ function StatCard({ label, value, sub, color }) {
 
 export default function PassengerDashboard() {
   const { user } = useAuth()
-  const { data, loading } = useOccupancy(15000)
+  const { data, loading, error } = useOccupancy(15000)
   const { data: heatmapData } = useHeatmap(60000)
 
   const zones = data?.zones ?? []
@@ -28,7 +29,7 @@ export default function PassengerDashboard() {
     : 0
 
   return (
-    <div className="bg-gray-900 p-6">
+    <div className="min-h-screen bg-gray-900 p-6">
       {/* Karşılama */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-white">
@@ -38,6 +39,16 @@ export default function PassengerDashboard() {
           Terminal durumu gerçek zamanlı güncelleniyor
         </p>
       </div>
+
+      {/* API hata banner */}
+      {error && !loading && (
+        <div className="mb-6 px-4 py-3 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center gap-3">
+          <svg className="w-5 h-5 text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          <p className="text-yellow-400 text-sm">{error} — Veriler alınamıyor, yeniden deneniyor...</p>
+        </div>
+      )}
 
       {/* Kritik uyarı banner */}
       {criticalZones.length > 0 && !loading && (
@@ -57,6 +68,11 @@ export default function PassengerDashboard() {
           </Link>
         </div>
       )}
+
+      {/* Eko-Puan Kartı */}
+      <div className="mb-6">
+        <EcoPointsCard />
+      </div>
 
       {/* Özet Kartlar */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">

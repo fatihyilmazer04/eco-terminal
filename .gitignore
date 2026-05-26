@@ -9,6 +9,9 @@
 google-services.json
 firebase-adminsdk*.json
 
+# Kubernetes secret'ları — gerçek değerler bu dosyada olmamalı
+k8s/secret.yaml
+
 # Java / Maven
 backend/target/
 backend/.mvn/wrapper/maven-wrapper.jar

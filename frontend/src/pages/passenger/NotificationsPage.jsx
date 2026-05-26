@@ -17,7 +17,7 @@ const TABS = [
 ]
 
 export default function NotificationsPage() {
-  const { notifications, unreadCount, loading, markAsRead, markAllAsRead } = useNotifications()
+  const { notifications, unreadCount, loading, error, markAsRead, markAllAsRead } = useNotifications()
   const [activeTab, setActiveTab] = useState('ALL')
 
   const filtered = notifications.filter(n => {
@@ -56,6 +56,13 @@ export default function NotificationsPage() {
             </button>
           )}
         </div>
+
+        {/* API hata mesajı */}
+        {error && (
+          <div className="px-4 py-3 rounded-xl bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm">
+            {error}
+          </div>
+        )}
 
         {/* Filtre Tabları */}
         <div className="flex items-center gap-1 bg-gray-800/50 rounded-xl p-1">

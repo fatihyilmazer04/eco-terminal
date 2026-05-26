@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { getCrowdStatus, getAICrowdAnalysis } from '../../api/crowd'
 
 // ── Sabitler ─────────────────────────────────────────────────────────────────
@@ -179,33 +179,36 @@ export default function CrowdMonitorPage() {
   const [aiLoading,    setAiLoading]    = useState(true)
   const [lastRefresh,  setLastRefresh]  = useState(null)
   const [error,        setError]        = useState(null)
+  const isMounted = useRef(true)
 
   const fetchData = useCallback(async () => {
     try {
       const data = await getCrowdStatus()
+      if (!isMounted.current) return
       setZones(Array.isArray(data) ? data : [])
       setLastRefresh(new Date())
       setError(null)
-    } catch (err) {
-      setError('Kalabalık verileri yüklenemedi.')
+    } catch {
+      if (isMounted.current) setError('Kalabalık verileri yüklenemedi.')
     } finally {
-      setLoading(false)
+      if (isMounted.current) setLoading(false)
     }
   }, [])
 
   const fetchAI = useCallback(async () => {
     try {
-      setAiLoading(true)
+      if (isMounted.current) setAiLoading(true)
       const data = await getAICrowdAnalysis()
-      setAnalysis(data)
+      if (isMounted.current) setAnalysis(data)
     } catch {
       // AI servisi erişilemez — sessizce geç
     } finally {
-      setAiLoading(false)
+      if (isMounted.current) setAiLoading(false)
     }
   }, [])
 
   useEffect(() => {
+    isMounted.current = true
     fetchData()
     fetchAI()
 
@@ -214,7 +217,10 @@ export default function CrowdMonitorPage() {
       fetchAI()
     }, REFRESH_INTERVAL)
 
-    return () => clearInterval(interval)
+    return () => {
+      isMounted.current = false
+      clearInterval(interval)
+    }
   }, [fetchData, fetchAI])
 
   // Filtre state

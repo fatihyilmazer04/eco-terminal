@@ -1,7 +1,10 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useSuggestedRoute, useAlternatives } from '../../hooks/useFlights'
 import OccupancyCard from '../../components/OccupancyCard'
+import { loyaltyApi } from '../../api/loyaltyApi'
+import { ACTION_POINTS } from '../../hooks/useLoyalty'
+import toast from 'react-hot-toast'
 
 const LEVEL_COLORS = {
   LOW:      '#2ECC71',
@@ -74,6 +77,24 @@ function StepCard({ step }) {
 export default function RouteSuggestionPage() {
   const [searchParams] = useSearchParams()
   const { data: route, loading, error } = useSuggestedRoute()
+  const [routeSelected, setRouteSelected] = useState(false)
+  const [earning, setEarning] = useState(false)
+
+  const handleSelectRoute = async () => {
+    if (routeSelected || earning) return
+    setEarning(true)
+    try {
+      const res = await loyaltyApi.earn('ROUTE_SELECTION')
+      const newBalance = res.data.data?.currentBalance ?? 0
+      const gained = ACTION_POINTS.ROUTE_SELECTION
+      toast.success(`🌿 +${gained} Eko-Puan kazandınız! Toplam: ${newBalance}`)
+      setRouteSelected(true)
+    } catch {
+      toast.error('Puan kazanılamadı, lütfen tekrar deneyin.')
+    } finally {
+      setEarning(false)
+    }
+  }
 
   // Hedef kapı zoneId'yi alternatifler için bul
   const targetZoneId = route?.steps?.at(-1)
@@ -108,7 +129,18 @@ export default function RouteSuggestionPage() {
     )
   }
 
-  if (!route) return null
+  if (!route) return (
+    <div className="min-h-screen bg-gray-900 p-6 flex items-center justify-center">
+      <div className="eco-card text-center max-w-sm">
+        <div className="text-4xl mb-3">✈️</div>
+        <p className="text-gray-300 font-medium mb-1">Rota bulunamadı</p>
+        <p className="text-gray-500 text-sm mb-4">Aktif bir uçuş biletiniz olmayabilir.</p>
+        <Link to="/passenger/flights" className="eco-btn-secondary text-sm">
+          Uçuşlarıma Dön
+        </Link>
+      </div>
+    </div>
+  )
 
   const totalMins = parseInt(route.estimatedTotalWalkMinutes) || 0
 
@@ -153,11 +185,34 @@ export default function RouteSuggestionPage() {
 
       {/* Adım Adım Rota */}
       <h2 className="text-base font-semibold text-white mb-3">Güzergah</h2>
-      <div className="flex flex-col gap-3 mb-8">
+      <div className="flex flex-col gap-3 mb-4">
         {route.steps.map(step => (
           <StepCard key={step.stepNumber} step={step} />
         ))}
       </div>
+
+      {/* Rotayı Seç — Puan Kazan Butonu */}
+      <button
+        onClick={handleSelectRoute}
+        disabled={routeSelected || earning}
+        className={`
+          w-full py-3.5 rounded-xl font-bold text-sm mb-8 transition-all
+          flex items-center justify-center gap-2
+          ${routeSelected
+            ? 'bg-eco-green/20 border border-eco-green/40 text-eco-green cursor-default'
+            : earning
+              ? 'bg-eco-green/50 text-gray-900 cursor-wait'
+              : 'bg-eco-green text-gray-900 hover:bg-green-400 active:scale-95 shadow-lg shadow-eco-green/20'}
+        `}
+      >
+        {routeSelected ? (
+          <>✓ Rota Seçildi — 🌿 +50 Eko-Puan Kazandınız!</>
+        ) : earning ? (
+          <>Puan kazanılıyor...</>
+        ) : (
+          <>🌿 Bu Rotayı Seç — +50 Eko-Puan Kazan</>
+        )}
+      </button>
 
       {/* Alternatif Sakin Alanlar */}
       {alternatives.length > 0 && (

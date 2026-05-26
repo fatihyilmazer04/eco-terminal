@@ -14,6 +14,7 @@ import ZoneDetailPanel from '../../components/ZoneDetailPanel'
 import { adminApi, statsApi } from '../../api/adminApi'
 import { predictionApi } from '../../api/predictionApi'
 import { getHeatmapLive } from '../../api/heatmap'
+import { getYoloStatus, triggerBatchDetect } from '../../api/yolov8Api'
 
 // Bölge çizgi renkleri (recharts)
 const ZONE_COLORS = ['#2ECC71', '#F39C12', '#3B82F6', '#E74C3C', '#8B5CF6', '#EC4899']
@@ -378,6 +379,9 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* ── YOLOv8 Kamera Durumu ────────────────────────────────────────────── */}
+      <YoloStatusPanel />
+
       {/* ── Terminal Heatmap Özeti ──────────────────────────────────────────── */}
       {heatmapData && (
         <div className="space-y-3">
@@ -518,6 +522,119 @@ function SavingsBanner() {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ── YOLOv8 Kamera Durumu Paneli ───────────────────────────────────────────────
+function YoloStatusPanel() {
+  const [data,    setData]    = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [running, setRunning] = useState(false)
+  const isMounted = useRef(true)
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const res = await getYoloStatus()
+      if (isMounted.current) setData(res)
+    } catch {
+      // YOLOv8 servisi kapalıysa paneli gizle (sessizce)
+      if (isMounted.current) setData(null)
+    } finally {
+      if (isMounted.current) setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    isMounted.current = true
+    fetchStatus()
+    const id = setInterval(fetchStatus, 60_000)
+    return () => { isMounted.current = false; clearInterval(id) }
+  }, [fetchStatus])
+
+  const handleBatch = async () => {
+    setRunning(true)
+    try {
+      await triggerBatchDetect()
+      await fetchStatus()
+    } catch { /* servis kapalı */ } finally {
+      if (isMounted.current) setRunning(false)
+    }
+  }
+
+  if (loading || !data) return null
+
+  const zones = data.zones ?? []
+  if (zones.length === 0) return null
+
+  return (
+    <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+      <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+        <div>
+          <h2 className="text-white font-semibold">YOLOv8 Kamera Durumu</h2>
+          {data.last_run_at && (
+            <p className="text-gray-500 text-xs mt-0.5">
+              Son tarama: {data.last_run_at.slice(11, 16)} UTC
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-eco-green/10
+                           border border-eco-green/30 text-eco-green text-xs font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-eco-green animate-pulse" />
+            YOLOv8 Aktif
+          </span>
+          <button
+            onClick={handleBatch}
+            disabled={running}
+            className="px-3 py-1.5 rounded-lg bg-gray-700 border border-gray-600
+                       text-gray-300 text-xs hover:border-eco-green/50 transition-colors
+                       disabled:opacity-50"
+          >
+            {running ? 'Taranıyor...' : '↻ Şimdi Tara'}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 p-4">
+        {zones.map(z => {
+          const density = z.density_pct ?? 0
+          const pct = Math.round(density * 100)
+          const barColor =
+            pct >= 85 ? 'bg-red-500' :
+            pct >= 60 ? 'bg-yellow-400' :
+            pct >= 30 ? 'bg-blue-500'   : 'bg-eco-green'
+          const borderColor =
+            pct >= 85 ? 'border-red-500/30' :
+            pct >= 60 ? 'border-yellow-500/30' :
+            pct >= 30 ? 'border-blue-500/30'   : 'border-eco-green/20'
+
+          return (
+            <div key={z.zone_id}
+                 className={`rounded-lg p-3 border bg-gray-900/50 ${borderColor}`}>
+              <p className="text-gray-200 text-xs font-semibold truncate mb-1">
+                {z.zone_name ?? `Zone ${z.zone_id}`}
+              </p>
+              <div className="flex items-end justify-between mb-1.5">
+                <span className="text-white text-lg font-bold leading-none">
+                  {z.people_count ?? 0}
+                </span>
+                <span className="text-gray-500 text-xs">kişi</span>
+              </div>
+              <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden mb-1">
+                <div
+                  className={`h-full rounded-full transition-all ${barColor}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-gray-500">
+                <span>%{pct} dolu</span>
+                <span className="text-gray-600">{z.timestamp?.slice(11, 16)}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

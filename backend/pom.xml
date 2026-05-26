@@ -113,6 +113,18 @@
             <artifactId>bucket4j-core</artifactId>
             <version>8.10.1</version>
         </dependency>
+        <!-- Bucket4j Redis backend — distributed rate limiting (multi-instance) -->
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j-redis</artifactId>
+            <version>8.10.1</version>
+        </dependency>
+
+        <!-- Spring Data Redis (Lettuce client) — rate limiting + cache altyapısı -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
 
         <!-- Firebase Admin SDK — FCM push bildirimleri için -->
         <dependency>

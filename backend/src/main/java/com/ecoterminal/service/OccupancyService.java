@@ -22,8 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-// audit_logs JDBC
-import org.springframework.jdbc.core.JdbcTemplate;
 
 @Slf4j
 @Service
@@ -32,7 +30,7 @@ public class OccupancyService {
 
     private final ZoneRepository zoneRepository;
     private final OccupancyReadingRepository occupancyReadingRepository;
-    private final JdbcTemplate jdbcTemplate;
+    private final AuditLogService auditLogService;
 
     // ── Bölge Listesi ────────────────────────────────────────────────────────
 
@@ -124,10 +122,7 @@ public class OccupancyService {
         String oldVal = String.format("{\"zone\":\"%s\",\"action\":\"redirect_source\"}", fromZone.getZoneName());
         String newVal = String.format("{\"zone\":\"%s\",\"message\":\"%s\",\"estimated_redirected\":%d}",
                 toZone.getZoneName(), request.message().replace("\"", "'"), notifCount);
-        jdbcTemplate.update(
-                "INSERT INTO audit_logs (actor_id, action_type, target_table, target_id, old_value, new_value) " +
-                "VALUES (?, 'REDIRECT', 'zones', ?, ?::jsonb, ?::jsonb)",
-                actorId, fromZone.getZoneId(), oldVal, newVal);
+        auditLogService.log(actorId, "REDIRECT", "zones", fromZone.getZoneId(), oldVal, newVal);
 
         log.info("Admin {} yönlendirdi: {} → {}, mesaj='{}'", actorId, fromZone.getZoneName(), toZone.getZoneName(), request.message());
 

@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src --ext .jsx,.js"
+    "lint": "eslint src --ext .jsx,.js",
+    "dev:win": "node node_modules/vite/bin/vite.js",
+    "build:win": "node node_modules/vite/bin/vite.js build",
+    "preview:win": "node node_modules/vite/bin/vite.js preview"
   },
   "dependencies": {
     "axios": "^1.7.2",

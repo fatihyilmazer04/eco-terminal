@@ -27,7 +27,7 @@ public class AIPredictionController {
         return ResponseEntity.ok(ApiResponse.ok(predictionService.getPredictionsForAdmin()));
     }
 
-    /** GET /api/ai/predictions/{zoneId} — bölge tahmini (cache veya live) */
+    /** GET /api/ai/predictions/{zoneId} — bölge tahmini */
     @GetMapping("/{zoneId}")
     public ResponseEntity<ApiResponse<AIPredictionResponse>> getPredictionForZone(
             @PathVariable Long zoneId) {
@@ -44,14 +44,24 @@ public class AIPredictionController {
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponse<List<AIPredictionResponse>>> refresh() {
         log.info("Admin manuel tahmin yenileme isteği");
-        List<AIPredictionResponse> updated = predictionService.refreshPredictions();
-        return ResponseEntity.ok(ApiResponse.ok(updated));
+        return ResponseEntity.ok(ApiResponse.ok(predictionService.refreshPredictions()));
     }
 
-    /** GET /api/ai/predictions/zone-forecast?zoneId=1 — Çok horizonlu bölge tahmini */
+    /**
+     * GET /api/ai/predictions/zone-forecast?zoneId=1&type=OCCUPANCY&range=24H
+     * type=OCCUPANCY (varsayılan) → shortTerm/longTerm yoğunluk tahmini
+     * type=ENERGY                → dataPoints enerji tahmini (24H / 1W / 1M)
+     */
     @GetMapping("/zone-forecast")
     public ResponseEntity<ApiResponse<ZoneForecastResponse>> getZoneForecast(
-            @RequestParam Long zoneId) {
-        return ResponseEntity.ok(ApiResponse.ok(predictionService.getZoneForecast(zoneId)));
+            @RequestParam Long zoneId,
+            @RequestParam(defaultValue = "OCCUPANCY") String type,
+            @RequestParam(defaultValue = "24H")       String range) {
+
+        ZoneForecastResponse response = "ENERGY".equalsIgnoreCase(type)
+                ? predictionService.getEnergyForecast(zoneId, range)
+                : predictionService.getZoneForecast(zoneId);
+
+        return ResponseEntity.ok(ApiResponse.ok(response));
     }
 }

@@ -20,15 +20,11 @@ export function useFcmToken() {
     const init = async () => {
       try {
         const permission = await Notification.requestPermission()
-        if (permission !== 'granted') {
-          console.log('[FCM] Bildirim izni reddedildi')
-          return
-        }
+        if (permission !== 'granted') return
         // Simülasyon: gerçek Firebase token yerine placeholder
         // Gerçek uygulamada: const token = await getToken(messaging, { vapidKey })
-        console.log('[FCM] Bildirim izni verildi — simülasyon modu, gerçek token alınmıyor')
-      } catch (err) {
-        console.log('[FCM] Token alınamadı:', err.message)
+      } catch {
+        // İzin alınamadı ya da tarayıcı desteklemiyor — sessizce atla
       }
     }
 

@@ -9,18 +9,22 @@ import com.ecoterminal.model.dto.RegisterRequest;
 import com.ecoterminal.service.AuthService;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import io.swagger.v3.oas.annotations.Operation;
+import io.github.bucket4j.BucketConfiguration;
+import io.github.bucket4j.distributed.proxy.ProxyManager;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 @Slf4j
 @RestController
@@ -32,11 +36,22 @@ public class AuthController {
     private final AuthService authService;
 
     /**
-     * IP başına rate limiting bucket'ları.
-     * Kural: 10 istek / dakika — brute-force koruması.
-     * Production'da Redis backed bucket4j kullanılır (Faz 8).
+     * Redis destekli dağıtık rate limiting (birden fazla instance için).
+     * Redis bağlantısı yoksa in-memory fallback devreye girer.
      */
-    private final ConcurrentHashMap<String, Bucket> loginBuckets = new ConcurrentHashMap<>();
+    @Autowired(required = false)
+    private ProxyManager<byte[]> proxyManager;
+
+    // In-memory fallback: Redis unavailable durumunda
+    private final ConcurrentHashMap<String, Bucket> fallbackBuckets = new ConcurrentHashMap<>();
+
+    private static final Supplier<BucketConfiguration> LOGIN_BUCKET_CONFIG = () ->
+            BucketConfiguration.builder()
+                    .addLimit(Bandwidth.builder()
+                            .capacity(10)
+                            .refillGreedy(10, Duration.ofMinutes(1))
+                            .build())
+                    .build();
 
     // ── POST /api/auth/login ───────────────────────────────────────────────
 
@@ -45,11 +60,9 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request,
             HttpServletRequest httpRequest
     ) {
-        // Rate limit kontrolü
         String clientIp = getClientIp(httpRequest);
-        Bucket bucket = loginBuckets.computeIfAbsent(clientIp, this::newLoginBucket);
 
-        if (!bucket.tryConsume(1)) {
+        if (!tryConsumeToken(clientIp)) {
             log.warn("Rate limit exceeded for IP: {}", clientIp);
             throw new BusinessException("Çok fazla giriş denemesi. 1 dakika bekleyin.", HttpStatus.TOO_MANY_REQUESTS);
         }
@@ -81,13 +94,27 @@ public class AuthController {
 
     // ── Yardımcı Metotlar ─────────────────────────────────────────────────
 
-    private Bucket newLoginBucket(String ip) {
-        // 10 token / dakika — her saniye 1/6 token dolar
-        Bandwidth limit = Bandwidth.builder()
-                .capacity(10)
-                .refillGreedy(10, Duration.ofMinutes(1))
-                .build();
-        return Bucket.builder().addLimit(limit).build();
+    private boolean tryConsumeToken(String clientIp) {
+        if (proxyManager != null) {
+            try {
+                byte[] key = ("login_rate:" + clientIp).getBytes(StandardCharsets.UTF_8);
+                Bucket bucket = proxyManager.builder()
+                        .build(key, LOGIN_BUCKET_CONFIG);
+                return bucket.tryConsume(1);
+            } catch (Exception e) {
+                log.warn("Redis rate limiter hatası, in-memory fallback kullanılıyor: {}", e.getMessage());
+            }
+        }
+        // In-memory fallback
+        Bucket bucket = fallbackBuckets.computeIfAbsent(clientIp, ip ->
+                Bucket.builder()
+                        .addLimit(Bandwidth.builder()
+                                .capacity(10)
+                                .refillGreedy(10, Duration.ofMinutes(1))
+                                .build())
+                        .build()
+        );
+        return bucket.tryConsume(1);
     }
 
     private String getClientIp(HttpServletRequest request) {
