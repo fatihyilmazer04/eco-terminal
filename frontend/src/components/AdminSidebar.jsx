@@ -4,12 +4,13 @@ import { useAuth } from '../context/AuthContext'
 
 const NAV_ITEMS = [
   { to: '/admin/dashboard',   label: 'Kontrol Paneli',      icon: '🏠' },
-  { to: '/admin/heatmap',     label: 'Canlı Heatmap',       icon: '🗺️' },
+  { to: '/admin/heatmap',     label: 'Canlı Isı Haritası',  icon: '🗺️' },
   { to: '/admin/occupancy',   label: 'Yoğunluk Yönetimi',  icon: '📊' },
-  { to: '/admin/crowd',       label: 'Kalabalık İzleme',   icon: '👁️' },
   { to: '/admin/energy',      label: 'Enerji Yönetimi',     icon: '⚡' },
   { to: '/admin/predictions', label: 'AI Tahminleri',       icon: '🤖' },
   { to: '/admin/reports',     label: 'Raporlar',            icon: '📋' },
+  { to: '/admin/flights',     label: 'Uçuş Yönetimi',       icon: '✈️' },
+  { to: '/admin/qr-codes',    label: 'QR Kod Yönetimi',     icon: '📱' },
   { to: '/admin/settings',    label: 'Sistem Ayarları',     icon: '⚙️' },
 ]
 

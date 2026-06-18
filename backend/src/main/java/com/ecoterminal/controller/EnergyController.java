@@ -4,7 +4,6 @@ import com.ecoterminal.model.dto.ApiResponse;
 import com.ecoterminal.model.dto.EnergyResponse;
 import com.ecoterminal.model.dto.EnergySettingRequest;
 import com.ecoterminal.model.dto.EnergySettingResponse;
-import com.ecoterminal.model.dto.EnergyTrendPoint;
 import com.ecoterminal.model.dto.SavingSuggestion;
 import com.ecoterminal.security.UserPrincipal;
 import com.ecoterminal.service.EnergyService;
@@ -52,18 +51,6 @@ public class EnergyController {
     @GetMapping("/savings")
     public ResponseEntity<ApiResponse<List<SavingSuggestion>>> getSavings() {
         return ResponseEntity.ok(ApiResponse.ok(energyService.getSavingSuggestions()));
-    }
-
-    /**
-     * GET /api/energy/trend/{zoneId}?hours=6
-     * Belirli bölgenin son N saatlik enerji trendi.
-     */
-    @GetMapping("/trend/{zoneId}")
-    public ResponseEntity<ApiResponse<List<EnergyTrendPoint>>> getTrend(
-            @PathVariable Long zoneId,
-            @RequestParam(defaultValue = "6") int hours) {
-        if (hours < 1 || hours > 168) hours = 6;
-        return ResponseEntity.ok(ApiResponse.ok(energyService.getEnergyTrend(zoneId, hours)));
     }
 
     /**

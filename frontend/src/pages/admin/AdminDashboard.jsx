@@ -1,77 +1,78 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Link } from 'react-router-dom'
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, AreaChart, Area, BarChart, Bar
-} from 'recharts'
-import KpiCard from '../../components/KpiCard'
-import OccupancyCard from '../../components/OccupancyCard'
-import RiskBadge from '../../components/RiskBadge'
-import AirportHeatmap from '../../components/AirportHeatmap'
-import HeatmapSummaryCards from '../../components/HeatmapSummaryCards'
-import AIInsightBox from '../../components/AIInsightBox'
-import ZoneDetailPanel from '../../components/ZoneDetailPanel'
+import { Link, useNavigate } from 'react-router-dom'
 import { adminApi, statsApi } from '../../api/adminApi'
 import { predictionApi } from '../../api/predictionApi'
 import { getHeatmapLive } from '../../api/heatmap'
-import { getYoloStatus, triggerBatchDetect } from '../../api/yolov8Api'
 
-// Bölge çizgi renkleri (recharts)
-const ZONE_COLORS = ['#2ECC71', '#F39C12', '#3B82F6', '#E74C3C', '#8B5CF6', '#EC4899']
+// ── Sabitler ─────────────────────────────────────────────────────────────────
 
-// Son 1 saatlik yoğunluk trendi için mock/live veri birleştirici
-// API'den gelen anlık değerleri timeline'a çevirir
-function buildTrendFromOccupancies(zones) {
-  // Her bölge için son değeri tek nokta olarak döndür (gerçek trend için polling gerekir)
-  // Burada son 6 okumayı simüle ediyoruz — ama şu an tek snapshot var
-  const now = new Date()
-  return [
-    {
-      time: now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-      ...Object.fromEntries(zones.map(z => [
-        z.zoneName.replace(/[^a-zA-Z0-9]/g, '_'),
-        parseFloat(((z.densityPct ?? 0) * 100).toFixed(1))
-      ]))
-    }
-  ]
+const QUICK_LINKS = [
+  { label: 'Canlı Isı Haritası',  icon: '🗺️',  to: '/admin/heatmap'     },
+  { label: 'Yoğunluk Yönetimi',   icon: '📊',  to: '/admin/occupancy'   },
+  { label: 'Enerji Yönetimi',     icon: '⚡',  to: '/admin/energy'      },
+  { label: 'AI Tahminleri',        icon: '🔮',  to: '/admin/predictions' },
+  { label: 'Raporlar',             icon: '📋',  to: '/admin/reports'     },
+  { label: 'Sistem Ayarları',      icon: '⚙️',  to: '/admin/settings'    },
+]
+
+const SERVICE_LABELS = {
+  backend:   'Backend',
+  database:  'Veritabanı',
+  redis:     'Redis',
+  aiService: 'AI Servisi',
+  yolov8:    'YOLOv8',
 }
 
-export default function AdminDashboard() {
-  const [summary, setSummary]     = useState(null)
-  const [trendData, setTrendData] = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState(null)
-  const [lastUpdated, setLastUpdated] = useState(null)
-  const [heatmapData, setHeatmapData] = useState(null)
-  const [selectedZoneId, setSelectedZoneId] = useState(null)
-  const [visitorStats, setVisitorStats] = useState([])
-  const [energyStats,  setEnergyStats]  = useState([])
-  const [cameras,      setCameras]      = useState([])
-  const isMounted = useRef(true)
-  const trendBuffer = useRef([])  // son 10 snapshot tutarız
+// ── Yardımcı fonksiyonlar ─────────────────────────────────────────────────────
 
-  const fetchData = useCallback(async () => {
+function toDateStr(offsetDays = 0) {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  return d.toISOString().slice(0, 10)
+}
+
+function sumHourly(arr) {
+  return (arr ?? []).reduce((s, p) => s + (p.value ?? 0), 0)
+}
+
+// ── Ana bileşen ───────────────────────────────────────────────────────────────
+
+export default function AdminDashboard() {
+  const navigate = useNavigate()
+
+  // Ana dashboard verisi (30 sn polling)
+  const [summary,     setSummary]     = useState(null)
+  const [loading,     setLoading]     = useState(true)
+  const [error,       setError]       = useState(null)
+  const [lastUpdated, setLastUpdated] = useState(null)
+
+  // Heatmap (60 sn polling) — alertZones + fullCount/busyCount için
+  const [heatmap, setHeatmap] = useState(null)
+
+  // AI tahminleri (60 sn polling)
+  const [predictions,    setPredictions]    = useState([])
+  const [highRiskCount,  setHighRiskCount]  = useState(0)
+  const [mediumRiskCount,setMediumRiskCount]= useState(0)
+
+  // Sistem sağlığı (60 sn polling)
+  const [health,        setHealth]        = useState(null)
+  const [healthLoading, setHealthLoading] = useState(true)
+
+  // Enerji trendi (tek seferlik)
+  const [energyToday,     setEnergyToday]     = useState(null)
+  const [energyYesterday, setEnergyYesterday] = useState(null)
+
+  const isMounted = useRef(true)
+
+  // ── Veri çekme fonksiyonları ────────────────────────────────────────────────
+
+  const fetchSummary = useCallback(async () => {
     try {
       const res = await adminApi.getDashboard()
       if (!isMounted.current) return
-      const data = res.data.data
-      setSummary(data)
+      setSummary(res.data.data)
       setLastUpdated(new Date())
       setError(null)
-
-      // Trend buffer'a ekle — her 30s'de bir yeni nokta
-      const now = new Date()
-      const point = {
-        time: now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-        ...Object.fromEntries(
-          (data.zoneOccupancies ?? []).map(z => [
-            z.zoneName,
-            parseFloat(((z.densityPct ?? 0) * 100).toFixed(1))
-          ])
-        )
-      }
-      trendBuffer.current = [...trendBuffer.current.slice(-11), point]
-      setTrendData([...trendBuffer.current])
     } catch (err) {
       if (isMounted.current)
         setError(err.response?.data?.message || 'Veriler alınamadı')
@@ -80,48 +81,125 @@ export default function AdminDashboard() {
     }
   }, [])
 
+  const fetchHeatmap = useCallback(async () => {
+    try {
+      const data = await getHeatmapLive()
+      if (isMounted.current) setHeatmap(data)
+    } catch { /* sessizce */ }
+  }, [])
+
+  const fetchPredictions = useCallback(async () => {
+    try {
+      const res = await predictionApi.getAll()
+      if (!isMounted.current) return
+      const data = res.data.data ?? []
+      setHighRiskCount(data.filter(p => p.riskLevel === 'HIGH').length)
+      setMediumRiskCount(data.filter(p => p.riskLevel === 'MEDIUM').length)
+      setPredictions(
+        [...data]
+          .filter(p => p.riskLevel === 'HIGH')
+          .sort((a, b) => (b.predictedLoad ?? 0) - (a.predictedLoad ?? 0))
+          .slice(0, 5)
+      )
+    } catch { /* sessizce */ }
+  }, [])
+
+  const fetchHealth = useCallback(async () => {
+    try {
+      const res = await adminApi.getSystemHealth()
+      if (isMounted.current) {
+        setHealth(res.data.data)
+        setHealthLoading(false)
+      }
+    } catch {
+      if (isMounted.current) setHealthLoading(false)
+    }
+  }, [])
+
+  const fetchEnergyTrend = useCallback(async () => {
+    try {
+      const [todayRes, yestRes] = await Promise.all([
+        adminApi.getEnergyReport(toDateStr(0)).catch(() => ({ data: { data: [] } })),
+        adminApi.getEnergyReport(toDateStr(-1)).catch(() => ({ data: { data: [] } })),
+      ])
+      if (!isMounted.current) return
+      setEnergyToday(sumHourly(todayRes.data.data))
+      setEnergyYesterday(sumHourly(yestRes.data.data))
+    } catch { /* sessizce */ }
+  }, [])
+
+  // ── Mount / Unmount ──────────────────────────────────────────────────────────
+
   useEffect(() => {
     isMounted.current = true
-    fetchData()
-    const id = setInterval(fetchData, 30_000)
-    // Heatmap'i ayrıca çek (60 sn)
-    getHeatmapLive().then(d => { if (isMounted.current) setHeatmapData(d) }).catch(() => {})
-    const heatmapId = setInterval(() => {
-      getHeatmapLive().then(d => { if (isMounted.current) setHeatmapData(d) }).catch(() => {})
-    }, 60_000)
-    // İstatistikleri bir kez çek
-    statsApi.getVisitors().then(r => { if (isMounted.current) setVisitorStats(r.data.data ?? []) }).catch(() => {})
-    statsApi.getEnergy().then(r => { if (isMounted.current) setEnergyStats(r.data.data ?? []) }).catch(() => {})
-    statsApi.getCameras().then(r => { if (isMounted.current) setCameras(r.data.data ?? []) }).catch(() => {})
+
+    fetchSummary()
+    fetchHeatmap()
+    fetchPredictions()
+    fetchHealth()
+    fetchEnergyTrend()
+
+    const summaryInterval     = setInterval(fetchSummary,     30_000)
+    const heatmapInterval     = setInterval(fetchHeatmap,     60_000)
+    const predictionsInterval = setInterval(fetchPredictions, 60_000)
+    const healthInterval      = setInterval(fetchHealth,      60_000)
+
     return () => {
       isMounted.current = false
-      clearInterval(id)
-      clearInterval(heatmapId)
+      clearInterval(summaryInterval)
+      clearInterval(heatmapInterval)
+      clearInterval(predictionsInterval)
+      clearInterval(healthInterval)
     }
-  }, [fetchData])
+  }, [fetchSummary, fetchHeatmap, fetchPredictions, fetchHealth, fetchEnergyTrend])
+
+  // ── Skeleton / Hata ──────────────────────────────────────────────────────────
 
   if (loading) return <DashboardSkeleton />
 
   if (error) return (
     <div className="flex-1 p-6">
-      <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>
+      <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+        {error}
+      </div>
     </div>
   )
 
+  // ── Hesaplamalar ─────────────────────────────────────────────────────────────
+
   const {
-    totalPassengers, criticalZoneCount, averageDensityPct,
-    totalEnergyKwh, activeFlightCount, savingSuggestionCount,
-    zoneOccupancies = []
-  } = summary
+    criticalZoneCount = 0,
+    totalEnergyKwh    = 0,
+    savingSuggestionCount = 0,
+    totalUsers        = 0,
+    newUsersToday     = 0,
+    zoneOccupancies   = [],
+  } = summary ?? {}
 
-  const densityColor = averageDensityPct > 0.75 ? 'red' : averageDensityPct > 0.50 ? 'orange' : 'green'
-  const criticalColor = criticalZoneCount > 0 ? 'red' : 'green'
+  // Heatmap'ten 4'lü doluluk dağılımı (varsa), yoksa dashboard verisinden
+  const fullCount     = heatmap?.fullCount     ?? 0
+  const busyCount     = heatmap?.busyCount     ?? 0
+  const moderateCount = heatmap?.moderateCount ?? 0
+  const emptyCount    = heatmap?.emptyCount    ?? 0
+  const alertZones    = heatmap?.alertZones    ?? []
 
-  const zoneKeys = zoneOccupancies.map(z => z.zoneName)
+  // En yoğun zone'lar (density sıralı, ilk 6)
+  const topZones = [...zoneOccupancies]
+    .sort((a, b) => (b.densityPct ?? 0) - (a.densityPct ?? 0))
+    .slice(0, 6)
+
+  // Enerji trendi
+  let energyTrendPct = null
+  let energyTrendDir = null
+  if (energyYesterday > 0 && energyToday !== null) {
+    energyTrendPct = (((energyToday - energyYesterday) / energyYesterday) * 100).toFixed(1)
+    energyTrendDir = parseFloat(energyTrendPct) >= 0 ? 'up' : 'down'
+  }
 
   return (
-    <div className="flex-1 p-6 space-y-6 overflow-auto">
-      {/* Başlık + son güncelleme */}
+    <div className="flex-1 p-6 space-y-5 overflow-auto">
+
+      {/* ── Başlık ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Admin Paneli</h1>
@@ -130,11 +208,11 @@ export default function AdminDashboard() {
         <div className="flex items-center gap-3">
           {lastUpdated && (
             <span className="text-gray-500 text-xs">
-              Son güncelleme: {lastUpdated.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+              {lastUpdated.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
           <button
-            onClick={fetchData}
+            onClick={fetchSummary}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-800
                        border border-gray-700 text-gray-300 text-sm hover:border-eco-green/50 transition-colors"
           >
@@ -147,345 +225,207 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 5 KPI Kartı */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      {/* ── 4 KPI Kartı ────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+
+        {/* Yoğunluk */}
         <KpiCard
-          title="Toplam Yolcu"
-          value={totalPassengers}
-          subtitle="terminal içinde"
-          icon="✈️"
-          color="blue"
+          to="/admin/occupancy"
+          icon="🏢"
+          title="Anlık Yoğunluk"
+          mainValue={`${fullCount + busyCount} kritik`}
+          sub1={`${moderateCount} orta · ${emptyCount} boş`}
+          sub2={`Toplam ${zoneOccupancies.length} bölge`}
+          accent={fullCount + busyCount > 0 ? 'red' : 'green'}
+          badge={fullCount + busyCount > 0 ? `${fullCount + busyCount} alarm` : 'Normal'}
+          badgeColor={fullCount + busyCount > 0 ? 'red' : 'green'}
         />
+
+        {/* Enerji */}
         <KpiCard
-          title="Kritik Bölge"
-          value={criticalZoneCount}
-          subtitle={criticalZoneCount > 0 ? 'müdahale gerekiyor' : 'tüm bölgeler normal'}
-          icon="⚠️"
-          color={criticalColor}
-        />
-        <KpiCard
-          title="Ort. Doluluk"
-          value={`%${((averageDensityPct ?? 0) * 100).toFixed(0)}`}
-          subtitle="tüm bölge ortalaması"
-          icon="📊"
-          color={densityColor}
-        />
-        <KpiCard
-          title="Toplam Enerji"
-          value={`${(totalEnergyKwh ?? 0).toFixed(1)} kWh`}
-          subtitle={`${savingSuggestionCount} tasarruf önerisi`}
+          to="/admin/energy"
           icon="⚡"
-          color="orange"
+          title="Enerji Tüketimi"
+          mainValue={`${(totalEnergyKwh ?? 0).toFixed(1)} kWh`}
+          sub1={
+            energyTrendPct !== null
+              ? `${energyTrendDir === 'up' ? '↑' : '↓'} %${Math.abs(energyTrendPct)} dünden`
+              : 'Anlık tüketim'
+          }
+          sub2={
+            savingSuggestionCount > 0
+              ? `${savingSuggestionCount} tasarruf önerisi`
+              : 'Tüm sistemler verimli'
+          }
+          accent={savingSuggestionCount > 0 ? 'orange' : 'green'}
+          badge={
+            energyTrendPct !== null
+              ? `${energyTrendDir === 'up' ? '↑' : '↓'} %${Math.abs(energyTrendPct)}`
+              : null
+          }
+          badgeColor={
+            energyTrendDir === 'up' ? 'orange' : energyTrendDir === 'down' ? 'green' : 'gray'
+          }
         />
+
+        {/* AI Risk */}
         <KpiCard
-          title="Aktif Uçuş"
-          value={activeFlightCount}
-          subtitle="planlanmış + biniş"
-          icon="🛫"
-          color="blue"
+          to="/admin/predictions"
+          icon="🔮"
+          title="AI Risk Durumu"
+          mainValue={`${highRiskCount} yüksek risk`}
+          sub1={`${mediumRiskCount} orta risk`}
+          sub2="Bölge tahmin analizi"
+          accent={highRiskCount > 0 ? 'red' : 'green'}
+          badge={highRiskCount > 0 ? 'DİKKAT' : 'Normal'}
+          badgeColor={highRiskCount > 0 ? 'red' : 'green'}
+          pulse={highRiskCount > 0}
+        />
+
+        {/* Kullanıcı */}
+        <KpiCard
+          to="/admin/reports"
+          icon="👥"
+          title="Kullanıcılar"
+          mainValue={`${totalUsers} kayıtlı`}
+          sub1={`Bugün ${newUsersToday} yeni kayıt`}
+          sub2="Tüm raporlar için tıklayın"
+          accent="blue"
+          badge={newUsersToday > 0 ? `+${newUsersToday} bugün` : null}
+          badgeColor="blue"
         />
       </div>
 
-      {/* Orta satır: LineChart + Bölge Kartları */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Sol: Yoğunluk Trendi — son 12 snapshot */}
-        <div className="lg:col-span-2 bg-gray-800 rounded-xl p-4 border border-gray-700">
-          <h2 className="text-white font-semibold mb-1">Yoğunluk Trendi</h2>
-          <p className="text-gray-500 text-xs mb-4">Her 30 saniyede güncellenir</p>
-          {trendData.length < 2 ? (
-            <div className="flex items-center justify-center h-40 text-gray-500 text-sm">
-              Yeterli veri biriktirilmeye devam ediyor...
-              <br />Anlık doluluk: {zoneOccupancies.map(z =>
-                `${z.zoneName} %${((z.densityPct ?? 0) * 100).toFixed(0)}`
-              ).join(' | ')}
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={trendData} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fill: '#9CA3AF', fontSize: 10 }}
-                  tickLine={false}
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  tick={{ fill: '#9CA3AF', fontSize: 10 }}
-                  tickLine={false}
-                  axisLine={false}
-                  domain={[0, 100]}
-                  tickFormatter={v => `${v}%`}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1F2937',
-                    border: '1px solid #374151',
-                    borderRadius: '0.5rem',
-                    fontSize: '11px',
-                  }}
-                  labelStyle={{ color: '#F9FAFB', marginBottom: 4 }}
-                  formatter={(v, name) => [`%${v}`, name]}
-                />
-                <Legend wrapperStyle={{ fontSize: '11px', color: '#9CA3AF' }} />
-                {zoneKeys.map((key, i) => (
-                  <Line
-                    key={key}
-                    type="monotone"
-                    dataKey={key}
-                    name={key}
-                    stroke={ZONE_COLORS[i % ZONE_COLORS.length]}
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 3 }}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+      {/* ── Orta: Sistem Sağlığı + Kritik Bölgeler ─────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-        {/* Sağ: Bölge Kartları (küçük) */}
-        <div className="space-y-2 overflow-auto max-h-72 lg:max-h-none">
-          <h2 className="text-white font-semibold">Bölge Durumu</h2>
-          {zoneOccupancies.map(z => (
-            <OccupancyCard
-              key={z.zoneId}
-              zoneName={z.zoneName}
-              type={z.type}
-              currentCount={z.currentCount}
-              maxCapacity={z.maxCapacity}
-              densityPct={z.densityPct}
-              densityLevel={z.densityLevel}
-              colorCode={z.colorCode}
-              criticalThreshold={z.criticalThreshold}
-            />
+        {/* Sistem Sağlığı */}
+        <SystemHealthPanel health={health} loading={healthLoading} />
+
+        {/* Kritik Bölgeler */}
+        <CriticalZonesPanel
+          alertZones={alertZones}
+          topZones={topZones}
+          onNavigate={() => navigate('/admin/occupancy')}
+        />
+      </div>
+
+      {/* ── Hızlı Erişim ───────────────────────────────────────────────────── */}
+      <div>
+        <h2 className="text-white font-semibold mb-3">Hızlı Erişim</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {QUICK_LINKS.map(link => (
+            <Link
+              key={link.to}
+              to={link.to}
+              className="flex flex-col items-center gap-2 p-4 rounded-xl
+                         bg-gray-800 border border-gray-700 text-center
+                         hover:border-eco-green/50 hover:bg-gray-700/80 transition-all group"
+            >
+              <span className="text-2xl group-hover:scale-110 transition-transform">{link.icon}</span>
+              <span className="text-gray-300 text-xs font-medium leading-tight">{link.label}</span>
+            </Link>
           ))}
         </div>
       </div>
-
-      {/* Alt satır: Tasarruf Önerileri + AI Tahminleri yan yana */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-          <h2 className="text-white font-semibold mb-3">Enerji Tasarruf Önerileri</h2>
-          {savingSuggestionCount === 0 ? (
-            <div className="flex items-center gap-2 text-eco-green text-sm">
-              <span>✅</span>
-              <span>Tüm sistemler verimli çalışıyor — tasarruf önerisi yok.</span>
-            </div>
-          ) : (
-            <SavingsBanner />
-          )}
-        </div>
-
-        {/* AI Tahmin Mini Özet */}
-        <AIPredictionMini />
-      </div>
-
-      {/* ── 24s İstatistikler ──────────────────────────────────────────────── */}
-      {(visitorStats.length > 0 || energyStats.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 24s Ziyaretçi AreaChart */}
-          {visitorStats.length > 0 && (
-            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-              <h2 className="text-white font-semibold mb-1">24s Ziyaretçi İstatistiği</h2>
-              <p className="text-gray-500 text-xs mb-4">Saatlik ortalama kişi sayısı</p>
-              <ResponsiveContainer width="100%" height={180}>
-                <AreaChart
-                  data={visitorStats.map(p => ({ saat: `${String(p.hour).padStart(2,'0')}:00`, kisi: Math.round(p.value ?? 0) }))}
-                  margin={{ top: 5, right: 5, left: -20, bottom: 5 }}
-                >
-                  <defs>
-                    <linearGradient id="visGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#2ECC71" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#2ECC71" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="saat" tick={{ fill: '#9CA3AF', fontSize: 9 }} tickLine={false} interval={3} />
-                  <YAxis tick={{ fill: '#9CA3AF', fontSize: 9 }} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '0.5rem', fontSize: '11px' }}
-                    formatter={v => [`${v} kişi`, 'Ortalama']}
-                  />
-                  <Area type="monotone" dataKey="kisi" stroke="#2ECC71" strokeWidth={2}
-                        fill="url(#visGrad)" dot={false} activeDot={{ r: 3 }} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* 24s Enerji BarChart */}
-          {energyStats.length > 0 && (
-            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-              <h2 className="text-white font-semibold mb-1">24s Enerji Tüketimi</h2>
-              <p className="text-gray-500 text-xs mb-4">Saatlik toplam kWh</p>
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart
-                  data={energyStats.map(p => ({ saat: `${String(p.hour).padStart(2,'0')}:00`, kwh: parseFloat((p.value ?? 0).toFixed(1)) }))}
-                  margin={{ top: 5, right: 5, left: -20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="saat" tick={{ fill: '#9CA3AF', fontSize: 9 }} tickLine={false} interval={3} />
-                  <YAxis tick={{ fill: '#9CA3AF', fontSize: 9 }} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '0.5rem', fontSize: '11px' }}
-                    formatter={v => [`${v} kWh`, 'Enerji']}
-                  />
-                  <Bar dataKey="kwh" fill="#F39C12" fillOpacity={0.8} radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Kamera / Cihaz Durumu */}
-      {cameras.length > 0 && (
-        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-          <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-            <h2 className="text-white font-semibold">Kamera / IoT Cihaz Durumu</h2>
-            <div className="flex gap-3 text-xs">
-              <span className="text-eco-green">{cameras.filter(c => c.status === 'ONLINE').length} Çevrimiçi</span>
-              <span className="text-red-400">{cameras.filter(c => c.status !== 'ONLINE').length} Çevrimdışı</span>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 p-4">
-            {cameras.map(c => (
-              <div key={c.deviceId}
-                className={`rounded-lg p-2.5 border text-xs ${
-                  c.status === 'ONLINE'
-                    ? 'bg-eco-green/5 border-eco-green/20'
-                    : c.status === 'MAINTENANCE'
-                    ? 'bg-yellow-500/5 border-yellow-500/20'
-                    : 'bg-red-500/5 border-red-500/20'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 mb-1">
-                  <div className={`w-1.5 h-1.5 rounded-full ${
-                    c.status === 'ONLINE' ? 'bg-eco-green' :
-                    c.status === 'MAINTENANCE' ? 'bg-yellow-400' : 'bg-red-400'
-                  }`} />
-                  <span className={`font-medium ${
-                    c.status === 'ONLINE' ? 'text-eco-green' :
-                    c.status === 'MAINTENANCE' ? 'text-yellow-400' : 'text-red-400'
-                  }`}>{c.status}</span>
-                </div>
-                <p className="text-gray-300 font-medium truncate">{c.serialNumber}</p>
-                <p className="text-gray-500 truncate">{c.zoneName}</p>
-                <p className="text-gray-600">{c.deviceType}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── YOLOv8 Kamera Durumu ────────────────────────────────────────────── */}
-      <YoloStatusPanel />
-
-      {/* ── Terminal Heatmap Özeti ──────────────────────────────────────────── */}
-      {heatmapData && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-white font-semibold">Terminal Yoğunluk Haritası</h2>
-            <Link
-              to="/admin/heatmap"
-              className="text-eco-green text-xs hover:underline font-medium"
-            >
-              Tam ekran →
-            </Link>
-          </div>
-          <HeatmapSummaryCards data={heatmapData} />
-          <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-            <div className="xl:col-span-3">
-              <AirportHeatmap
-                zones={heatmapData.zones ?? []}
-                onZoneClick={id => setSelectedZoneId(prev => prev === id ? null : id)}
-                selectedZoneId={selectedZoneId}
-              />
-            </div>
-            <div className="xl:col-span-1">
-              {selectedZoneId ? (
-                <ZoneDetailPanel
-                  zone={heatmapData.zones?.find(z => z.zoneId === selectedZoneId)}
-                  onClose={() => setSelectedZoneId(null)}
-                />
-              ) : (
-                <div className="rounded-xl border border-gray-700 bg-gray-800/50 p-4 flex items-center justify-center h-full min-h-32">
-                  <p className="text-gray-600 text-xs text-center">Zone seçin</p>
-                </div>
-              )}
-            </div>
-          </div>
-          <AIInsightBox
-            summary={heatmapData.aiSummary}
-            alertZones={heatmapData.alertZones}
-            suggestedZones={heatmapData.suggestedZones}
-          />
-        </div>
-      )}
     </div>
   )
 }
 
-// AI tahmin özetini ayrı fetch eden alt bileşen
-function AIPredictionMini() {
-  const [predictions, setPredictions] = useState([])
-  const [highRiskCount, setHighRiskCount] = useState(0)
+// ── KPI Kartı ─────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    predictionApi.getAll()
-      .then(r => {
-        const data = r.data.data ?? []
-        // Riske göre sırala, ilk 3'ü al
-        const sorted = [...data].sort((a, b) => {
-          const order = { HIGH: 0, MEDIUM: 1, LOW: 2 }
-          return (order[a.riskLevel] ?? 3) - (order[b.riskLevel] ?? 3)
-        })
-        setPredictions(sorted.slice(0, 3))
-        setHighRiskCount(data.filter(p => p.riskLevel === 'HIGH').length)
-      })
-      .catch(() => {})
-  }, [])
+const ACCENT_STYLES = {
+  red:    { border: 'border-red-500/40',    bg: 'bg-red-500/5',    badge: 'bg-red-500/20 text-red-400',    dot: 'bg-red-500'    },
+  orange: { border: 'border-orange-500/40', bg: 'bg-orange-500/5', badge: 'bg-orange-500/20 text-orange-400', dot: 'bg-orange-500' },
+  green:  { border: 'border-eco-green/40',  bg: 'bg-eco-green/5',  badge: 'bg-eco-green/20 text-eco-green',  dot: 'bg-eco-green'  },
+  blue:   { border: 'border-blue-500/40',   bg: 'bg-blue-500/5',   badge: 'bg-blue-500/20 text-blue-400',   dot: 'bg-blue-500'   },
+  gray:   { border: 'border-gray-500/40',   bg: 'bg-gray-500/5',   badge: 'bg-gray-500/20 text-gray-400',   dot: 'bg-gray-500'   },
+}
+
+function KpiCard({ to, icon, title, mainValue, sub1, sub2, accent = 'blue', badge, badgeColor = 'blue', pulse = false }) {
+  const styles = ACCENT_STYLES[accent] ?? ACCENT_STYLES.blue
+  const badgeStyles = ACCENT_STYLES[badgeColor] ?? ACCENT_STYLES.blue
 
   return (
-    <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-white font-semibold">AI Tahminleri</h2>
-        <Link
-          to="/admin/predictions"
-          className="text-eco-green text-xs hover:underline font-medium"
-        >
-          Tümünü gör →
-        </Link>
+    <Link
+      to={to}
+      className={`block p-4 rounded-xl border ${styles.border} ${styles.bg}
+                  bg-gray-800 hover:bg-gray-750 hover:border-opacity-70
+                  transition-all cursor-pointer group`}
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">{icon}</span>
+          <span className="text-gray-400 text-xs font-medium">{title}</span>
+        </div>
+        {badge && (
+          <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${badgeStyles.badge}`}>
+            {pulse && (
+              <span className="relative flex h-1.5 w-1.5">
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${badgeStyles.dot} opacity-75`} />
+                <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${badgeStyles.dot}`} />
+              </span>
+            )}
+            {badge}
+          </span>
+        )}
       </div>
 
-      {/* HIGH risk banner */}
-      {highRiskCount > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-          </span>
-          <p className="text-red-400 text-xs font-medium">
-            {highRiskCount} bölge YÜKSEK RİSK seviyesinde
-          </p>
-        </div>
-      )}
+      <p className="text-white text-xl font-bold leading-tight mb-1">{mainValue}</p>
+      <p className="text-gray-400 text-xs">{sub1}</p>
+      <p className="text-gray-600 text-xs mt-0.5">{sub2}</p>
 
-      {/* Son 3 tahmin */}
-      <div className="space-y-2">
-        {predictions.length === 0 ? (
-          <p className="text-gray-500 text-xs py-4 text-center">AI tahmin verisi yok</p>
-        ) : predictions.map(p => (
-          <div key={p.zoneId}
-               className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-900/50">
-            <div>
-              <p className="text-gray-200 text-sm font-medium">{p.zoneName}</p>
-              <p className="text-gray-500 text-xs">
-                Tahmin: %{((p.predictedLoad ?? 0) * 100).toFixed(0)}
-              </p>
-            </div>
-            <RiskBadge riskLevel={p.riskLevel} trend={p.trend} />
+      <div className="mt-3 flex items-center justify-end">
+        <span className="text-eco-green text-xs opacity-0 group-hover:opacity-100 transition-opacity font-medium">
+          Detaylar →
+        </span>
+      </div>
+    </Link>
+  )
+}
+
+// ── Sistem Sağlığı Paneli ─────────────────────────────────────────────────────
+
+function SystemHealthPanel({ health, loading }) {
+  const services = health
+    ? Object.entries(SERVICE_LABELS).map(([key, label]) => ({
+        key,
+        label,
+        status: health[key] ?? 'UNKNOWN',
+      }))
+    : Object.entries(SERVICE_LABELS).map(([key, label]) => ({
+        key,
+        label,
+        status: loading ? 'LOADING' : 'UNKNOWN',
+      }))
+
+  const upCount   = services.filter(s => s.status === 'UP').length
+  const downCount = services.filter(s => s.status === 'DOWN').length
+
+  return (
+    <div className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-white font-semibold">Sistem Sağlığı</h2>
+          {!loading && (
+            <p className="text-gray-500 text-xs mt-0.5">
+              {downCount === 0
+                ? `${upCount} servis çevrimiçi`
+                : `${upCount} çevrimiçi · ${downCount} sorunlu`}
+            </p>
+          )}
+        </div>
+        <div className={`w-2.5 h-2.5 rounded-full ${
+          loading ? 'bg-gray-600' :
+          downCount === 0 ? 'bg-eco-green animate-pulse' : 'bg-red-500 animate-pulse'
+        }`} />
+      </div>
+
+      <div className="space-y-2.5">
+        {services.map(({ key, label, status }) => (
+          <div key={key} className="flex items-center justify-between">
+            <span className="text-gray-300 text-sm">{label}</span>
+            <ServiceStatusBadge status={status} />
           </div>
         ))}
       </div>
@@ -493,169 +433,156 @@ function AIPredictionMini() {
   )
 }
 
-// Tasarruf önerilerini ayrı fetch eden alt bileşen
-function SavingsBanner() {
-  const [savings, setSavings] = useState([])
-
-  useEffect(() => {
-    import('../../api/adminApi').then(({ energyApi }) => {
-      energyApi.getSavings()
-        .then(r => setSavings(r.data.data ?? []))
-        .catch(() => {})
-    })
-  }, [])
-
+function ServiceStatusBadge({ status }) {
+  if (status === 'LOADING') return (
+    <span className="flex items-center gap-1.5 text-xs text-gray-500">
+      <span className="w-1.5 h-1.5 rounded-full bg-gray-600 animate-pulse" />
+      Kontrol ediliyor
+    </span>
+  )
+  if (status === 'UP') return (
+    <span className="flex items-center gap-1.5 text-xs text-eco-green font-medium">
+      <span className="w-1.5 h-1.5 rounded-full bg-eco-green" />
+      Çevrimiçi
+    </span>
+  )
+  if (status === 'DOWN') return (
+    <span className="flex items-center gap-1.5 text-xs text-red-400 font-medium">
+      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+      Çevrimdışı
+    </span>
+  )
   return (
-    <div className="space-y-2">
-      {savings.map(s => (
-        <div key={s.zoneId}
-             className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-          <span className="text-yellow-400 mt-0.5">⚠️</span>
-          <div>
-            <p className="text-yellow-300 text-sm font-medium">{s.zoneName}</p>
-            <p className="text-yellow-400/80 text-xs">{s.suggestion}</p>
-            <p className="text-yellow-500 text-xs mt-0.5">
-              Doluluk: %{((s.currentDensity ?? 0) * 100).toFixed(0)} &nbsp;·&nbsp;
-              Enerji: {(s.currentEnergyKwh ?? 0).toFixed(1)} kWh &nbsp;·&nbsp;
-              ~%{s.potentialSavingPct} tasarruf potansiyeli
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
+    <span className="flex items-center gap-1.5 text-xs text-gray-500">
+      <span className="w-1.5 h-1.5 rounded-full bg-gray-600" />
+      Bilinmiyor
+    </span>
   )
 }
 
-// ── YOLOv8 Kamera Durumu Paneli ───────────────────────────────────────────────
-function YoloStatusPanel() {
-  const [data,    setData]    = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [running, setRunning] = useState(false)
-  const isMounted = useRef(true)
+// ── Kritik Bölgeler Paneli ────────────────────────────────────────────────────
 
-  const fetchStatus = useCallback(async () => {
-    try {
-      const res = await getYoloStatus()
-      if (isMounted.current) setData(res)
-    } catch {
-      // YOLOv8 servisi kapalıysa paneli gizle (sessizce)
-      if (isMounted.current) setData(null)
-    } finally {
-      if (isMounted.current) setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    isMounted.current = true
-    fetchStatus()
-    const id = setInterval(fetchStatus, 60_000)
-    return () => { isMounted.current = false; clearInterval(id) }
-  }, [fetchStatus])
-
-  const handleBatch = async () => {
-    setRunning(true)
-    try {
-      await triggerBatchDetect()
-      await fetchStatus()
-    } catch { /* servis kapalı */ } finally {
-      if (isMounted.current) setRunning(false)
-    }
-  }
-
-  if (loading || !data) return null
-
-  const zones = data.zones ?? []
-  if (zones.length === 0) return null
+function CriticalZonesPanel({ alertZones, topZones, onNavigate }) {
+  const hasCritical = alertZones.length > 0 || topZones.some(z => (z.densityPct ?? 0) >= 0.85)
 
   return (
-    <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-      <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+    <div className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-white font-semibold">YOLOv8 Kamera Durumu</h2>
-          {data.last_run_at && (
-            <p className="text-gray-500 text-xs mt-0.5">
-              Son tarama: {data.last_run_at.slice(11, 16)} UTC
-            </p>
-          )}
+          <h2 className="text-white font-semibold">En Yoğun Bölgeler</h2>
+          <p className="text-gray-500 text-xs mt-0.5">
+            {hasCritical ? 'Kritik bölgeler üstte gösteriliyor' : 'Anlık doluluk sıralaması'}
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-eco-green/10
-                           border border-eco-green/30 text-eco-green text-xs font-medium">
-            <span className="w-1.5 h-1.5 rounded-full bg-eco-green animate-pulse" />
-            YOLOv8 Aktif
-          </span>
-          <button
-            onClick={handleBatch}
-            disabled={running}
-            className="px-3 py-1.5 rounded-lg bg-gray-700 border border-gray-600
-                       text-gray-300 text-xs hover:border-eco-green/50 transition-colors
-                       disabled:opacity-50"
-          >
-            {running ? 'Taranıyor...' : '↻ Şimdi Tara'}
-          </button>
-        </div>
+        <button
+          onClick={onNavigate}
+          className="text-eco-green text-xs hover:underline font-medium"
+        >
+          Yönetim →
+        </button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 p-4">
-        {zones.map(z => {
-          const density = z.density_pct ?? 0
-          const pct = Math.round(density * 100)
-          const barColor =
-            pct >= 85 ? 'bg-red-500' :
-            pct >= 60 ? 'bg-yellow-400' :
-            pct >= 30 ? 'bg-blue-500'   : 'bg-eco-green'
-          const borderColor =
-            pct >= 85 ? 'border-red-500/30' :
-            pct >= 60 ? 'border-yellow-500/30' :
-            pct >= 30 ? 'border-blue-500/30'   : 'border-eco-green/20'
-
-          return (
-            <div key={z.zone_id}
-                 className={`rounded-lg p-3 border bg-gray-900/50 ${borderColor}`}>
-              <p className="text-gray-200 text-xs font-semibold truncate mb-1">
-                {z.zone_name ?? `Zone ${z.zone_id}`}
-              </p>
-              <div className="flex items-end justify-between mb-1.5">
-                <span className="text-white text-lg font-bold leading-none">
-                  {z.people_count ?? 0}
-                </span>
-                <span className="text-gray-500 text-xs">kişi</span>
-              </div>
-              <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden mb-1">
-                <div
-                  className={`h-full rounded-full transition-all ${barColor}`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[10px] text-gray-500">
-                <span>%{pct} dolu</span>
-                <span className="text-gray-600">{z.timestamp?.slice(11, 16)}</span>
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      {topZones.length === 0 ? (
+        <div className="flex items-center justify-center h-32 text-gray-600 text-sm">
+          Bölge verisi yükleniyor...
+        </div>
+      ) : !hasCritical ? (
+        <div className="flex flex-col items-center justify-center h-28 gap-2">
+          <span className="text-2xl">✅</span>
+          <p className="text-eco-green text-sm font-medium">Şu an kritik bölge yok</p>
+          <p className="text-gray-500 text-xs">Tüm bölgeler normal seviyede</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {topZones.map(z => {
+            const pct = Math.round((z.densityPct ?? 0) * 100)
+            const isCritical = pct >= 85
+            const isBusy     = pct >= 60 && pct < 85
+            return (
+              <button
+                key={z.zoneId}
+                onClick={onNavigate}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg
+                           bg-gray-900/50 hover:bg-gray-700/50 transition-colors text-left"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                    isCritical ? 'bg-red-500' :
+                    isBusy     ? 'bg-yellow-400' : 'bg-eco-green'
+                  }`} />
+                  <span className="text-gray-200 text-sm font-medium truncate">
+                    {z.zoneName}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 flex-shrink-0 ml-2">
+                  <div className="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        isCritical ? 'bg-red-500' :
+                        isBusy     ? 'bg-yellow-400' : 'bg-eco-green'
+                      }`}
+                      style={{ width: `${Math.min(pct, 100)}%` }}
+                    />
+                  </div>
+                  <span className={`text-xs font-semibold w-8 text-right ${
+                    isCritical ? 'text-red-400' :
+                    isBusy     ? 'text-yellow-400' : 'text-eco-green'
+                  }`}>
+                    %{pct}
+                  </span>
+                  <ZoneLevelBadge pct={pct} />
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
+
+function ZoneLevelBadge({ pct }) {
+  if (pct >= 85) return (
+    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-500/20 text-red-400 w-14 text-center">
+      DOLU
+    </span>
+  )
+  if (pct >= 60) return (
+    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-yellow-500/20 text-yellow-400 w-14 text-center">
+      YOĞUN
+    </span>
+  )
+  if (pct >= 20) return (
+    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/20 text-blue-400 w-14 text-center">
+      ORTA
+    </span>
+  )
+  return (
+    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-eco-green/20 text-eco-green w-14 text-center">
+      BOŞ
+    </span>
+  )
+}
+
+// ── Skeleton ─────────────────────────────────────────────────────────────────
 
 function DashboardSkeleton() {
   return (
-    <div className="flex-1 p-6 space-y-6 animate-pulse">
-      <div className="h-8 w-48 bg-gray-700 rounded" />
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {[1,2,3,4,5].map(i => (
-          <div key={i} className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-            <div className="h-3 w-20 bg-gray-700 rounded mb-3" />
-            <div className="h-7 w-14 bg-gray-700 rounded" />
-          </div>
+    <div className="flex-1 p-6 space-y-5 animate-pulse">
+      <div className="h-8 w-44 bg-gray-700 rounded" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="bg-gray-800 rounded-xl p-4 border border-gray-700 h-36" />
         ))}
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-gray-800 rounded-xl p-4 border border-gray-700 h-56" />
-        <div className="space-y-2">
-          {[1,2,3,4].map(i => <div key={i} className="bg-gray-800 rounded-xl h-16 border border-gray-700" />)}
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 h-52" />
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 h-52" />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {[1, 2, 3, 4, 5, 6].map(i => (
+          <div key={i} className="bg-gray-800 rounded-xl h-20 border border-gray-700" />
+        ))}
       </div>
     </div>
   )
