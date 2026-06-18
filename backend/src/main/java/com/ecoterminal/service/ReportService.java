@@ -182,16 +182,32 @@ public class ReportService {
         List<OccupancySummaryResponse.ZoneOccupancyDetail> zoneBreakdown = List.of();
         try {
             List<Map<String, Object>> zdRows = jdbc.queryForList(
-                    "SELECT z.zone_name, " +
-                    "ROUND((AVG(or2.density_pct)*100)::numeric,1) AS avg_pct, " +
-                    "ROUND((MAX(or2.density_pct)*100)::numeric,1) AS max_pct, " +
-                    "ROUND((MIN(or2.density_pct)*100)::numeric,1) AS min_pct, " +
-                    "COUNT(*) FILTER (WHERE or2.density_pct >= 0.85) AS critical_count, " +
-                    "COUNT(*) AS total_readings " +
-                    "FROM occupancy_readings or2 JOIN zones z ON or2.zone_id = z.zone_id " +
-                    "WHERE or2.recorded_at >= ? AND or2.recorded_at < ? " +
-                    "AND or2.source IN ('simulator', 'yolov8_live') " +
-                    "GROUP BY z.zone_name ORDER BY avg_pct DESC",
+                    "WITH metrics AS (" +
+                    "  SELECT or2.zone_id, " +
+                    "    ROUND((AVG(or2.density_pct)*100)::numeric,1) AS avg_pct, " +
+                    "    ROUND((MAX(or2.density_pct)*100)::numeric,1) AS max_pct, " +
+                    "    ROUND((MIN(or2.density_pct)*100)::numeric,1) AS min_pct, " +
+                    "    COUNT(*) AS total_readings " +
+                    "  FROM occupancy_readings or2 " +
+                    "  WHERE or2.recorded_at >= ? AND or2.recorded_at < ? " +
+                    "    AND or2.source IN ('simulator', 'yolov8_live') " +
+                    "  GROUP BY or2.zone_id" +
+                    "), " +
+                    "kritik AS (" +
+                    "  SELECT zone_id, " +
+                    "    COUNT(*) FILTER (WHERE density_pct >= 0.85) AS critical_count " +
+                    "  FROM occupancy_readings " +
+                    "  WHERE recorded_at >= ? AND recorded_at < ? " +
+                    "  GROUP BY zone_id" +
+                    ") " +
+                    "SELECT z.zone_name, m.avg_pct, m.max_pct, m.min_pct, " +
+                    "  COALESCE(k.critical_count, 0) AS critical_count, " +
+                    "  m.total_readings " +
+                    "FROM metrics m " +
+                    "JOIN zones z ON m.zone_id = z.zone_id " +
+                    "LEFT JOIN kritik k ON m.zone_id = k.zone_id " +
+                    "ORDER BY m.avg_pct DESC",
+                    Timestamp.from(pStart), Timestamp.from(pEnd),
                     Timestamp.from(pStart), Timestamp.from(pEnd));
             zoneBreakdown = zdRows.stream()
                     .map(r -> new OccupancySummaryResponse.ZoneOccupancyDetail(
