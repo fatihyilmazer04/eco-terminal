@@ -1,5 +1,5 @@
-"""LLM module — Ollama client and prompt building."""
-from app.llm.ollama_client import OllamaClient
+"""LLM module — HuggingFace yerel model ve prompt building."""
+from app.llm.huggingface_client import HuggingFaceClient
 from app.llm.prompt_builder import PromptBuilder
 
-__all__ = ["OllamaClient", "PromptBuilder"]
+__all__ = ["HuggingFaceClient", "PromptBuilder"]

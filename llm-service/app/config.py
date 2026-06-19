@@ -22,10 +22,9 @@ class Settings(BaseSettings):
     backend_timeout_seconds: float = 5.0
     backend_internal_token: str = ""  # X-Internal-Token header value; set via LLM_SERVICE_INTERNAL_TOKEN
 
-    # Ollama (yerel LLM — Cloudflare Tunnel ile erişilebilir)
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.2"
-    ollama_timeout_seconds: float = 60.0
+    # Hugging Face yerel model
+    hf_model_id: str = "Qwen/Qwen2.5-3B-Instruct"
+    hf_timeout_seconds: float = 120.0
 
     # Intent classifier mode (added in step 4.2)
     # Options: "rule_based" | "distilbert" | "hybrid"

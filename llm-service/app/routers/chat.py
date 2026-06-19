@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException
 from app.schemas import ChatRequest, ChatResponse, ChatStep
 from app.intent import RuleBasedClassifier, DistilBertClassifier, HybridClassifier
 from app.rag import KnowledgeBase, BackendClient, Retriever, RetrievedContext
-from app.llm import OllamaClient, PromptBuilder
+from app.llm import HuggingFaceClient, PromptBuilder
 from app.llm.template_engine import (
     get_smart_reply,
     generate_notification_reply,
@@ -42,7 +42,8 @@ logger.info("intent_classifier_mode=%s classifier=%s", settings.intent_classifie
 _kb = KnowledgeBase()
 _backend = BackendClient()
 _retriever = Retriever(_kb, _backend)
-_ollama = OllamaClient()
+_hf = HuggingFaceClient()
+_hf.load()   # Model startup'ta bir kez yüklenir (~30-60s)
 _prompt_builder = PromptBuilder()
 
 
@@ -105,13 +106,13 @@ async def chat(req: ChatRequest) -> ChatResponse:
     prompt = _prompt_builder.build(intent_result, context)
     logger.debug("prompt_built length=%d", len(prompt))
 
-    # 4. Call Ollama (with smart template fallback)
+    # 4. Call local HuggingFace model (with smart template fallback)
     reply: str
-    if _ollama.is_configured():
-        ollama_reply = await _ollama.generate(prompt)
-        if ollama_reply:
-            reply = ollama_reply
-            sources_used.append(f"ollama:{settings.ollama_model}")
+    if _hf.is_configured():
+        hf_reply = await _hf.generate(prompt)
+        if hf_reply:
+            reply = hf_reply
+            sources_used.append(f"hf:{settings.hf_model_id}")
         else:
             reply = get_smart_reply(
                 intent=intent_result.intent.value,
