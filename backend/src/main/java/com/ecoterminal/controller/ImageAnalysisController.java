@@ -45,7 +45,7 @@ public class ImageAnalysisController {
     @Qualifier("yoloRestTemplate")
     private final RestTemplate yoloRestTemplate;
 
-    @Value("${yolov8.service.url:http://yolov8-service:5001}")
+    @Value("${yolov8-service.base-url:http://yolov8-service:5001}")
     private String yoloServiceUrl;
 
     // ── POST /api/zones/{zoneId}/analyze-image ─────────────────────────────────
