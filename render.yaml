@@ -78,10 +78,9 @@ services:
     dockerContext: frontend
     plan: free
     region: frankfurt
-    dockerBuildArgs:
+    envVars:
+      # Runtime env var — docker-entrypoint.sh envsubst ile nginx config'e yazar
       - key: BACKEND_URL
         sync: false
       - key: YOLO_URL
         sync: false
-      - key: VITE_API_BASE_URL
-        value: ""

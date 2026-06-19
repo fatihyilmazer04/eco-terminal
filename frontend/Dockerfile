@@ -22,20 +22,22 @@ RUN npm run build
 # ── Stage 2: Nginx Runtime ───────────────────────────────────────────────────
 FROM nginx:alpine AS runtime
 
-# Build-time ARG'lar — Render'da --build-arg ile verilir
-# Yerel Docker Compose'da boş bırakılınca varsayılan değerler kullanılır
-ARG BACKEND_URL=http://backend:8080
-ARG YOLO_URL=http://yolov8-service:5001
+# Runtime varsayılan değerler — Docker Compose'da override edilmezse bunlar kullanılır
+# Render'da env var olarak BACKEND_URL ve YOLO_URL geçilir
+ENV BACKEND_URL=http://backend:8080
+ENV YOLO_URL=http://yolov8-service:5001
 
 # React Router v6 — tüm rotalar index.html'e yönlendirmeli (SPA)
 RUN rm /etc/nginx/conf.d/default.conf
-COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Placeholder'ları gerçek URL'lerle değiştir (build time)
-RUN sed -i "s|BACKEND_URL_PLACEHOLDER|${BACKEND_URL}|g" /etc/nginx/conf.d/default.conf && \
-    sed -i "s|YOLO_URL_PLACEHOLDER|${YOLO_URL}|g" /etc/nginx/conf.d/default.conf
+# nginx.conf → template olarak kopyala; entrypoint envsubst ile işler
+COPY nginx.conf /etc/nginx/conf.d/default.conf.template
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 
+# Runtime entrypoint — envsubst çalıştırır, ardından nginx başlatır
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["/docker-entrypoint.sh"]
