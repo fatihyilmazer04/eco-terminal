@@ -3,8 +3,8 @@ package com.ecoterminal.service;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -15,10 +15,15 @@ import java.io.UnsupportedEncodingException;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class EmailService {
 
-    private final JavaMailSender mailSender;
+    /**
+     * required = false — MAIL_ENABLED=false ortamında (Render demo modu) JavaMailSender
+     * bean'i oluşturulamamış olsa bile EmailService ayağa kalkar.
+     * mailSender null ise send() otomatik olarak demo (log-only) moduna düşer.
+     */
+    @Autowired(required = false)
+    private JavaMailSender mailSender;
 
     @Value("${app.mail.enabled:false}")
     private boolean mailEnabled;
@@ -47,7 +52,11 @@ public class EmailService {
     // ── Ortak gönderim ───────────────────────────────────────────────────────
 
     private void send(String toEmail, String code, String type) {
-        if (!mailEnabled) {
+        // Demo modu: MAIL_ENABLED=false VEYA JavaMailSender bean inject edilememiş
+        if (!mailEnabled || mailSender == null) {
+            if (mailEnabled && mailSender == null) {
+                log.warn("[EMAIL] MAIL_ENABLED=true ama JavaMailSender mevcut değil — demo moduna düşüldü");
+            }
             logDemoCode(toEmail, code, type);
             return;
         }
