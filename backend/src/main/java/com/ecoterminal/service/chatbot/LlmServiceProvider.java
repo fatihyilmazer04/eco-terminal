@@ -42,8 +42,8 @@ public class LlmServiceProvider implements ChatbotProvider {
             @Value("${app.internal.token:}") String internalToken) {
 
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout((int) Duration.ofSeconds(5).toMillis());
-        factory.setReadTimeout((int) Duration.ofSeconds(15).toMillis());
+        factory.setConnectTimeout((int) Duration.ofSeconds(10).toMillis());
+        factory.setReadTimeout((int) Duration.ofSeconds(180).toMillis()); // yerel HF model inference için
         this.restTemplate  = builder.requestFactory(() -> factory).build();
         this.llmServiceUrl = llmServiceUrl;
         this.internalToken = internalToken;

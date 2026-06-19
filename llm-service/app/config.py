@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     # Hugging Face yerel model
     hf_model_id: str = "Qwen/Qwen2.5-3B-Instruct"
-    hf_timeout_seconds: float = 120.0
+    hf_timeout_seconds: float = 150.0
 
     # Intent classifier mode (added in step 4.2)
     # Options: "rule_based" | "distilbert" | "hybrid"
