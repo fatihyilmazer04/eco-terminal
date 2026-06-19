@@ -1,12 +1,12 @@
 """Chat endpoint — full RAG pipeline.
 
-Pipeline (step 3.3 complete):
+Pipeline:
     1. Validate request
-    2. Classify intent (rule-based)
+    2. Classify intent (rule-based / hybrid)
     3. Retrieve context (KB + backend)
     4. Build prompt
-    5. Call Gemini
-    6. Return reply OR fallback to template if Gemini unavailable
+    5. Call Ollama (yerel LLM)
+    6. Return reply OR fallback to template if Ollama unavailable
 """
 import logging
 from typing import List, Optional
@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException
 from app.schemas import ChatRequest, ChatResponse, ChatStep
 from app.intent import RuleBasedClassifier, DistilBertClassifier, HybridClassifier
 from app.rag import KnowledgeBase, BackendClient, Retriever, RetrievedContext
-from app.llm import GeminiClient, PromptBuilder
+from app.llm import OllamaClient, PromptBuilder
 from app.llm.template_engine import (
     get_smart_reply,
     generate_notification_reply,
@@ -42,7 +42,7 @@ logger.info("intent_classifier_mode=%s classifier=%s", settings.intent_classifie
 _kb = KnowledgeBase()
 _backend = BackendClient()
 _retriever = Retriever(_kb, _backend)
-_gemini = GeminiClient()
+_ollama = OllamaClient()
 _prompt_builder = PromptBuilder()
 
 
@@ -105,13 +105,13 @@ async def chat(req: ChatRequest) -> ChatResponse:
     prompt = _prompt_builder.build(intent_result, context)
     logger.debug("prompt_built length=%d", len(prompt))
 
-    # 4. Call Gemini (with smart template fallback)
+    # 4. Call Ollama (with smart template fallback)
     reply: str
-    if _gemini.is_configured():
-        gemini_reply = await _gemini.generate(prompt)
-        if gemini_reply:
-            reply = gemini_reply
-            sources_used.append(f"gemini:{settings.gemini_model}")
+    if _ollama.is_configured():
+        ollama_reply = await _ollama.generate(prompt)
+        if ollama_reply:
+            reply = ollama_reply
+            sources_used.append(f"ollama:{settings.ollama_model}")
         else:
             reply = get_smart_reply(
                 intent=intent_result.intent.value,
