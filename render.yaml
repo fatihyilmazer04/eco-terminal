@@ -73,24 +73,15 @@ services:
         sync: false
       # ── AI Servisi ──
       - key: AI_SERVICE_URL
-        fromService:
-          type: web
-          name: eco-terminal-ai
-          property: host
+        value: https://eco-terminal-ai.onrender.com
       # ── LLM Servisi ──
       - key: LLM_SERVICE_URL
-        fromService:
-          type: web
-          name: eco-terminal-llm
-          property: host
+        value: https://eco-terminal-llm.onrender.com
       - key: LLM_SERVICE_INTERNAL_TOKEN
         sync: false
       # ── YOLOv8 Servisi ──
       - key: YOLO_SERVICE_URL
-        fromService:
-          type: web
-          name: eco-terminal-yolo
-          property: host
+        value: https://eco-terminal-yolo.onrender.com
 
   # ── Frontend (React SPA — Render Static Site) ─────────────────────────────────
   # Static Site olarak deploy edilir: nginx yok, proxy yok, döngü riski yok.
@@ -196,10 +187,7 @@ services:
           name: eco-terminal-db
           property: password
       - key: AI_SERVICE_URL
-        fromService:
-          type: web
-          name: eco-terminal-ai
-          property: host
+        value: https://eco-terminal-ai.onrender.com
       - key: ENABLE_AUTO_SCAN
         value: "false"
       - key: FLASK_ENV
