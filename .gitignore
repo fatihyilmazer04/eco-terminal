@@ -78,3 +78,8 @@ yolo-finetune/
 **/*.h5
 **/*.keras
 **/*.pkl
+
+# Large ML model weights (>100MB — GitHub limit)
+**/*.safetensors
+**/*.bin
+llm-service/app/intent/models/distilbert/model.safetensors
