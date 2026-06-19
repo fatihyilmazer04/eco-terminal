@@ -22,7 +22,7 @@ EXPOSE 5002
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -f http://localhost:5002/health || exit 1
+    CMD curl -f http://localhost:${PORT:-5002}/health || exit 1
 
-# Production server
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5002", "--workers", "2"]
+# Production server — PORT env var'ı Render tarafından atanır, yoksa 5002'ye düşer
+CMD sh -c "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-5002} --workers 2"
