@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     backend_internal_token: str = ""  # X-Internal-Token header value; set via LLM_SERVICE_INTERNAL_TOKEN
 
     # Hugging Face yerel model
-    hf_model_id: str = "Qwen/Qwen2.5-3B-Instruct"
-    hf_timeout_seconds: float = 150.0
+    hf_model_id: str = "Qwen/Qwen2.5-0.5B-Instruct"
+    hf_timeout_seconds: float = 30.0
 
     # Intent classifier mode (added in step 4.2)
     # Options: "rule_based" | "distilbert" | "hybrid"
