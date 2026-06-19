@@ -32,21 +32,40 @@ class HuggingFaceClient:
         if self._loaded:
             return
         logger.info("hf_model_loading model=%s device=%s", self.model_id, self.device)
-        dtype = torch.float16 if self.device == "cuda" else torch.float32
 
         self._tokenizer = AutoTokenizer.from_pretrained(
             self.model_id,
             trust_remote_code=True,
         )
-        self._model = AutoModelForCausalLM.from_pretrained(
-            self.model_id,
-            torch_dtype=dtype,
-            device_map="auto",          # GPU varsa otomatik yerleştir
-            trust_remote_code=True,
-        )
+
+        # Önce GPU'ya yüklemeyi dene; VRAM yetersizse CPU'ya düş
+        if self.device == "cuda":
+            try:
+                self._model = AutoModelForCausalLM.from_pretrained(
+                    self.model_id,
+                    dtype=torch.float16,
+                    trust_remote_code=True,
+                ).to("cuda")
+                logger.info("hf_model_loaded_on_gpu model=%s", self.model_id)
+            except (RuntimeError, torch.cuda.OutOfMemoryError) as e:
+                logger.warning("GPU yüklenemedi (%s), CPU'ya geçiliyor", str(e)[:100])
+                self.device = "cpu"
+                self._model = AutoModelForCausalLM.from_pretrained(
+                    self.model_id,
+                    dtype=torch.float32,
+                    trust_remote_code=True,
+                )
+                logger.info("hf_model_loaded_on_cpu model=%s", self.model_id)
+        else:
+            self._model = AutoModelForCausalLM.from_pretrained(
+                self.model_id,
+                dtype=torch.float32,
+                trust_remote_code=True,
+            )
+            logger.info("hf_model_loaded_on_cpu model=%s", self.model_id)
+
         self._model.eval()
         self._loaded = True
-        logger.info("hf_model_loaded model=%s device=%s", self.model_id, self.device)
 
     def _run_inference(self, prompt: str) -> Optional[str]:
         """Senkron inference — to_thread içinde çalıştırılır."""
@@ -68,7 +87,7 @@ class HuggingFaceClient:
             tokenize=False,
             add_generation_prompt=True,
         )
-        inputs = self._tokenizer(text, return_tensors="pt").to(self._model.device)
+        inputs = self._tokenizer(text, return_tensors="pt").to(self.device)
 
         with torch.no_grad():
             outputs = self._model.generate(
