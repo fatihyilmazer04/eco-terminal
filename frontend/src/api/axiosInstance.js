@@ -85,9 +85,15 @@ axiosInstance.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${accessToken}`
         return axiosInstance(originalRequest)
       } catch (refreshError) {
-        // Refresh başarısız — kuyruktakileri de hata ile bitir
+        // 401/403 → refresh token geçersiz/süresi dolmuş → logout zorunlu.
+        // 502/503/504/timeout → backend geçici kapalı (Render free plan cold start) →
+        //   logout yapma, polling bir sonraki turda token'ı tekrar yenilemeyi dener.
+        const refreshStatus = refreshError.response?.status
+        const isAuthFailure = refreshStatus === 401 || refreshStatus === 403
+
         processQueue(refreshError, null)
-        forceLogout()
+        if (isAuthFailure) forceLogout()
+
         return Promise.reject(refreshError)
       } finally {
         isRefreshing = false
