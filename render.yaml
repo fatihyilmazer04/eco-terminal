@@ -78,9 +78,15 @@ services:
     dockerContext: frontend
     plan: free
     region: frankfurt
+    # ⚠️  VITE_API_BASE_URL build-time ARG'dır — render.yaml üzerinden geçirilemiyor.
+    # Render Dashboard → eco-terminal-frontend → Settings → Build & Deploy → Build Args:
+    #   VITE_API_BASE_URL = https://eco-terminal-backend.onrender.com
+    # Bu sayede tarayıcı backend'e direkt HTTPS çağrısı yapar (nginx proxy loop olmaz).
+    # Ayrıca backend servisine CORS_ORIGINS env var'ı ekle:
+    #   CORS_ORIGINS = https://eco-terminal-frontend.onrender.com
     envVars:
-      # Runtime env var — docker-entrypoint.sh envsubst ile nginx config'e yazar
+      # nginx proxy için runtime URL'ler (Docker Compose local mod için gerekli)
       - key: BACKEND_URL
-        sync: false
+        value: https://eco-terminal-backend.onrender.com
       - key: YOLO_URL
-        sync: false
+        value: https://eco-terminal-yolo.onrender.com
