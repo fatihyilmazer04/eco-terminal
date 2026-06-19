@@ -8,6 +8,7 @@ import com.ecoterminal.repository.ZoneRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +22,9 @@ import java.util.Random;
  * Her 5 dakikada bir tüm aktif bölgeler için sahte okuma üretir.
  * Belirli bölgeler (ALWAYS_BUSY_ZONES) her zaman yüksek yoğunlukta tutulur.
  * Bu sayede admin panelinde "Yönlendir" butonu ve kritik uyarılar test edilebilir.
+ *
+ * app.demo.fixed-heatmap=true olduğunda hem @PostConstruct hem @Scheduled devre dışı kalır;
+ * doluluk değerleri DemoOccupancyProvider tarafından sabit olarak sunulur.
  */
 @Slf4j
 @Service
@@ -30,6 +34,9 @@ public class OccupancySimulatorService {
     private final ZoneRepository              zoneRepo;
     private final OccupancyReadingRepository  occupancyRepo;
     private final Random                      rng = new Random();
+
+    @Value("${app.demo.fixed-heatmap:true}")
+    private boolean demoMode;
 
     /**
      * Sabit yüksek dolulukta tutulacak bölgeler ve hedef density aralıkları.
@@ -47,22 +54,27 @@ public class OccupancySimulatorService {
     private static final float DEFAULT_MAX = 0.50f;
 
     /**
-     * Uygulama başlangıcında ilk okumayı üret (tablolar boş olsa bile grafik gösterilsin).
+     * Manuel görüntü analizi akışı kullanılıyor, otomatik simülasyon kapalı.
+     * Başlangıç simülasyonu devre dışı bırakıldı: occupancy_readings tablosunu
+     * sahte verilerle kirletmemek için @PostConstruct kaldırıldı.
+     * Gerçek veriler yalnızca /api/zones/{id}/analyze-image üzerinden gelir.
      */
-    @PostConstruct
+    // @PostConstruct  — otomatik simülasyon kapalı
     public void initOnStartup() {
-        log.info("OccupancySimulatorService: başlangıç okumaları üretiliyor...");
-        generateReadings();
+        log.info("OccupancySimulatorService: simülasyon devre dışı (manuel görüntü analizi modu)");
     }
 
     /**
-     * Her 5 dakikada bir yeni okuma seti üretir.
-     * fixedDelay → her çalışma bittikten 5 dk sonra yeniden başlar.
+     * Manuel görüntü analizi akışı kullanılıyor, otomatik simülasyon kapalı.
+     * 5 dakikada bir sahte okuma üretimi durduruldu: her zone için yalnızca
+     * gerçek YOLOv8 görüntü analizinden (source='yolov8_live') gelen değerler
+     * occupancy_readings tablosuna yazılacak.
      */
-    @Scheduled(fixedDelay = 300_000)   // 5 dakika
+    // @Scheduled(fixedDelay = 300_000)  — otomatik simülasyon kapalı
     @Transactional
     public void scheduledGeneration() {
-        generateReadings();
+        // Manuel görüntü analizi akışı kullanılıyor, otomatik simülasyon kapalı.
+        log.debug("OccupancySimulatorService.scheduledGeneration devre dışı — çağrılmamalıydı");
     }
 
     // ── Yardımcı ─────────────────────────────────────────────────────────────

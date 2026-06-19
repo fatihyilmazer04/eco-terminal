@@ -36,10 +36,13 @@ export default function Navbar() {
           <Link to={isAdmin ? '/admin/dashboard' : '/passenger/dashboard'}
                 className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
-              <div className="w-6 h-6 rounded-md bg-eco-green/20 border border-eco-green/40
-                              flex items-center justify-center">
-                <span className="text-eco-green text-xs font-bold">E</span>
-              </div>
+              <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="28" height="28" rx="6" fill="#0F2240"/>
+                <path d="M14 5C14 5 9 9 9 14c0 3.5 1.5 5.5 4 7" stroke="#2ECC71" strokeWidth="1.6" strokeLinecap="round" fill="none"/>
+                <path d="M14 5c0 0 5 4 5 9 0 3.5-1.5 5.5-4 7" stroke="#2ECC71" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.4"/>
+                <path d="M10 21C11 23 12.5 23.5 14 25c1.5-1.5 3-2 4-4" stroke="#2ECC71" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                <circle cx="14" cy="14" r="2" fill="#2ECC71" opacity="0.9"/>
+              </svg>
               <span className="text-white font-semibold text-sm hidden sm:block">Eco-Terminal</span>
             </div>
             {/* Sistem aktif göstergesi */}

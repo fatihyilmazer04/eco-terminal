@@ -19,7 +19,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from config import PORT, DEBUG_MODE, DETECTION_INTERVAL_MINUTES
+from config import PORT, DEBUG_MODE, DETECTION_INTERVAL_MINUTES, ENABLE_AUTO_SCAN
 from detector import detect_crowd, batch_detect_all_zones, _get_zone_capacity
 
 # ── Flask ─────────────────────────────────────────────────────────────────────
@@ -50,11 +50,12 @@ def _run_batch_and_cache() -> list[dict]:
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({
-        "status":      "ok",
-        "service":     "yolov8-service",
-        "scheduler":   "running",
-        "last_run_at": _last_run_at,
-        "zones_cached": len(_last_results),
+        "status":        "ok",
+        "service":       "yolov8-service",
+        "auto_scan":     ENABLE_AUTO_SCAN,
+        "scheduler":     "running" if ENABLE_AUTO_SCAN else "disabled",
+        "last_run_at":   _last_run_at,
+        "zones_cached":  len(_last_results),
     }), 200
 
 
@@ -142,11 +143,20 @@ def start_scheduler():
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    _scheduler = start_scheduler()
-    # İlk çalıştırmada hemen bir batch al (önbelleği doldur)
-    try:
-        _run_batch_and_cache()
-    except Exception as exc:
-        logger.warning("İlk batch başarısız (DB henüz hazır değil?): %s", exc)
+    if ENABLE_AUTO_SCAN:
+        # Otomatik tarama aktif: APScheduler başlat ve ilk batch'i hemen çalıştır.
+        _scheduler = start_scheduler()
+        try:
+            _run_batch_and_cache()
+        except Exception as exc:
+            logger.warning("İlk batch başarısız (DB henüz hazır değil?): %s", exc)
+    else:
+        # Manuel görüntü analizi akışı kullanılıyor, otomatik tarama kapalı.
+        # occupancy_readings tablosuna yalnızca ImageAnalysisController üzerinden
+        # POST /detect çağrısıyla yazma yapılır; APScheduler başlatılmaz.
+        logger.info(
+            "Otomatik tarama KAPALI (ENABLE_AUTO_SCAN=false). "
+            "Yalnızca manuel /detect endpoint'i aktif."
+        )
     logger.info("YOLOv8 Servisi başlatılıyor: 0.0.0.0:%d (debug=%s)", PORT, DEBUG_MODE)
     app.run(host="0.0.0.0", port=PORT, debug=DEBUG_MODE, use_reloader=False)

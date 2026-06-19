@@ -201,4 +201,22 @@ public class NotificationService {
         notifRepository.markAllAsReadByUserId(userId);
         log.debug("Tüm bildirimler okundu işaretlendi: userId={}", userId);
     }
+
+    // ── Silme ─────────────────────────────────────────────────────────────
+
+    @Transactional
+    public void deleteNotification(Long notifId, Long userId) {
+        Notification notif = notifRepository.findById(notifId)
+                .orElseThrow(() -> BusinessException.notFound("Bildirim"));
+        if (!notif.getUser().getUserId().equals(userId)) {
+            throw new BusinessException("Bu bildirimi silme yetkiniz yok", HttpStatus.FORBIDDEN);
+        }
+        notifRepository.delete(notif);
+    }
+
+    @Transactional
+    public void deleteAllNotifications(Long userId) {
+        notifRepository.deleteAllByUserId(userId);
+        log.debug("Tüm bildirimler silindi: userId={}", userId);
+    }
 }

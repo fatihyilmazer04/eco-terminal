@@ -1,0 +1,15 @@
+# ── Veri işleme ──────────────────────────────────────────────────────────────
+pandas>=2.0
+numpy>=1.24
+pyarrow>=12.0
+
+# ── ML modelleri ─────────────────────────────────────────────────────────────
+xgboost>=2.0
+scikit-learn>=1.3
+joblib>=1.3          # model kaydetme/yükleme
+
+# ── Görselleştirme (opsiyonel ama önerilir) ───────────────────────────────────
+matplotlib>=3.7
+
+# ── DB bağlantısı (opsiyonel — zone verisi doğrudan DB'den çekilmek istenirse)
+psycopg2-binary>=2.9

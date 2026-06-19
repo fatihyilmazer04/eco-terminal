@@ -71,6 +71,8 @@ services:
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       MAIL_ENABLED: ${MAIL_ENABLED:-false}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LLM_SERVICE_INTERNAL_TOKEN: ${LLM_SERVICE_INTERNAL_TOKEN:-default-dev-token}
     ports:
       - "8080:8080"
     depends_on:
@@ -118,6 +120,8 @@ services:
       DB_USER: ${DB_USER:-ecoterminal}
       DB_PASSWORD: ${DB_PASSWORD:-ecoterminal123}
       FLASK_ENV: ${FLASK_ENV:-development}
+    volumes:
+      - ./ml-pipeline/models:/app/models:ro   # Faz 2 XGBoost modelleri (sadece okuma)
     ports:
       - "5000:5000"
     depends_on:
@@ -125,6 +129,35 @@ services:
         condition: service_healthy
     networks:
       - eco-net
+    restart: unless-stopped
+
+  # ── LLM / RAG Chatbot Servisi ─────────────────────────────────────────────
+  llm-service:
+    build:
+      context: ./llm-service
+      dockerfile: Dockerfile
+    container_name: eco-llm-service
+    environment:
+      BACKEND_BASE_URL: http://backend:8080
+      BACKEND_INTERNAL_TOKEN: ${LLM_SERVICE_INTERNAL_TOKEN:-default-dev-token}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: gemini-2.0-flash
+      ENABLE_INTENT_CLASSIFIER: "true"
+      ENABLE_RAG: "true"
+      LOG_LEVEL: INFO
+    ports:
+      - "5002:5002"
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - eco-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5002/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
 
   # ── YOLOv8 Kalabalık Tespit Servisi ──────────────────────────────────────
@@ -141,6 +174,9 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-ecoterminal123}
       AI_SERVICE_URL: http://ai-service:5000
       FLASK_ENV: ${FLASK_ENV:-development}
+      # Manuel görüntü analizi akışı; otomatik APScheduler batch'i kapalı.
+      # true yapılırsa servis her 15 dk'da bir tüm zone'ları otomatik tarar.
+      ENABLE_AUTO_SCAN: "false"
     ports:
       - "5001:5001"
     depends_on:

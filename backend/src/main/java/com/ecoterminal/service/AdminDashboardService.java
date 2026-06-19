@@ -6,11 +6,15 @@ import com.ecoterminal.model.entity.DensityLevel;
 import com.ecoterminal.model.entity.FlightStatus;
 import com.ecoterminal.repository.FlightRepository;
 import com.ecoterminal.repository.TicketRepository;
+import com.ecoterminal.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 
 @Slf4j
@@ -22,6 +26,7 @@ public class AdminDashboardService {
     private final EnergyService    energyService;
     private final FlightRepository flightRepository;
     private final TicketRepository ticketRepository;
+    private final UserRepository   userRepository;
 
     /**
      * Admin ana ekranı için sistem geneli özet.
@@ -60,8 +65,13 @@ public class AdminDashboardService {
         // savingSuggestionCount: WASTEFUL bölge sayısı
         int savingSuggestionCount = energyService.getSavingSuggestions().size();
 
-        log.debug("Admin summary: {} passengers, {} critical zones, {} active flights, {} saving suggestions",
-                totalPassengers, criticalZoneCount, activeFlightCount, savingSuggestionCount);
+        // totalUsers + newUsersToday
+        long totalUsers = userRepository.count();
+        Instant todayStart = LocalDate.now(ZoneOffset.UTC).atStartOfDay().toInstant(ZoneOffset.UTC);
+        int newUsersToday = (int) userRepository.countByCreatedAtBetween(todayStart, Instant.now());
+
+        log.debug("Admin summary: {} passengers, {} critical zones, {} active flights, {} users",
+                totalPassengers, criticalZoneCount, activeFlightCount, totalUsers);
 
         return new AdminDashboardResponse(
                 totalPassengers,
@@ -70,6 +80,8 @@ public class AdminDashboardService {
                 totalEnergyKwh,
                 activeFlightCount,
                 savingSuggestionCount,
+                totalUsers,
+                newUsersToday,
                 zones
         );
     }

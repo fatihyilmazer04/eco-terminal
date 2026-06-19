@@ -174,7 +174,6 @@ function Field({ label, value, onChange, type = 'text' }) {
 function PreferencesTab({ profile, onSave }) {
   const prefs = profile?.preferences ?? {}
   const [form, setForm] = useState({
-    seatPreference:   prefs.seatPreference   ?? 'NO_PREFERENCE',
     mealPreference:   prefs.mealPreference   ?? 'STANDARD',
     crowdAlerts:      prefs.crowdAlerts      ?? true,
     flightUpdates:    prefs.flightUpdates    ?? true,
@@ -196,32 +195,16 @@ function PreferencesTab({ profile, onSave }) {
       {/* Uçuş Tercihleri */}
       <div>
         <p className="text-white font-semibold text-sm mb-3">Uçuş Tercihleri</p>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs text-gray-400 mb-2">Koltuk Tercihi</label>
-            <div className="flex gap-2">
-              {[['WINDOW','Pencere'],['AISLE','Orta Yol'],['NO_PREFERENCE','Fark Etmez']].map(([v,l]) => (
-                <button key={v} onClick={() => handleChange('seatPreference', v)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs border transition-colors
-                                    ${form.seatPreference === v
-                                      ? 'bg-eco-green/20 border-eco-green/50 text-eco-green'
-                                      : 'border-gray-700 text-gray-400 hover:border-gray-500'}`}>
-                  {l}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">Yemek Tercihi</label>
-            <select value={form.mealPreference}
-                    onChange={e => handleChange('mealPreference', e.target.value)}
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2
-                               text-sm text-white focus:border-eco-green/50 focus:outline-none">
-              <option value="STANDARD">Standart</option>
-              <option value="VEGETARIAN">Vejetaryen</option>
-              <option value="VEGAN">Vegan</option>
-            </select>
-          </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Yemek Tercihi</label>
+          <select value={form.mealPreference}
+                  onChange={e => handleChange('mealPreference', e.target.value)}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2
+                             text-sm text-white focus:border-eco-green/50 focus:outline-none">
+            <option value="STANDARD">Standart</option>
+            <option value="VEGETARIAN">Vejetaryen</option>
+            <option value="VEGAN">Vegan</option>
+          </select>
         </div>
       </div>
 

@@ -6,5 +6,8 @@ import jakarta.validation.constraints.Size;
 public record ChatbotRequest(
         @NotBlank(message = "Mesaj boş olamaz")
         @Size(max = 500, message = "Mesaj en fazla 500 karakter olabilir")
-        String message
+        String message,
+
+        /** Opsiyonel: "cloud" veya "local". Belirtilmezse uygulama default'u kullanılır. */
+        String provider
 ) {}

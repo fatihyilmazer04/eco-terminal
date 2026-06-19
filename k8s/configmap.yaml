@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: eco-terminal-config
+  labels:
+    app.kubernetes.io/part-of: eco-terminal
+data:
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  DB_NAME: "ecoterminal"
+  DB_USER: "ecoterminal"
+  AI_SERVICE_URL: "http://ai-service:5000"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  CORS_ORIGINS: "http://localhost"
+  SPRING_PROFILES_ACTIVE: "dev"
+  FLASK_ENV: "production"
+  GRAFANA_USER: "admin"
+  GF_SERVER_HTTP_PORT: "3001"
+  GF_PATHS_PROVISIONING: "/etc/grafana/provisioning"
+  GF_AUTH_ANONYMOUS_ENABLED: "false"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  labels:
+    app.kubernetes.io/part-of: eco-terminal
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      - job_name: 'eco-terminal-backend'
+        metrics_path: '/actuator/prometheus'
+        static_configs:
+          - targets: ['backend:8080']
+        scrape_interval: 15s
+
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']

@@ -23,4 +23,7 @@ export const loyaltyApi = {
    * body: { action }
    */
   earn(action)        { return axiosInstance.post('/api/loyalty/earn', { action }) },
+
+  /** GET /api/loyalty/my-redemptions → RedemptionResponse[] */
+  getMyRedemptions()  { return axiosInstance.get('/api/loyalty/my-redemptions') },
 }

@@ -1,6 +1,7 @@
 package com.ecoterminal.config;
 
 import com.ecoterminal.security.CustomUserDetailsService;
+import com.ecoterminal.security.InternalTokenFilter;
 import com.ecoterminal.security.JwtAuthFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,6 +35,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final InternalTokenFilter internalTokenFilter;
     private final CustomUserDetailsService userDetailsService;
 
     @Value("${cors.allowed-origins:http://localhost:5173,http://localhost:3000}")
@@ -97,6 +99,9 @@ public class SecurityConfig {
                 // Authentication provider
                 .authenticationProvider(authenticationProvider())
 
+                // Internal service token filtresi — JWT'den ÖNCE çalışır
+                .addFilterBefore(internalTokenFilter, UsernamePasswordAuthenticationFilter.class)
+
                 // JWT filtresi, UsernamePasswordAuthenticationFilter'dan önce çalışır
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
 
@@ -108,8 +113,9 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
 
         // İzin verilen origin'ler — .env'den okunabilir
+        // setAllowedOriginPatterns glob destekler: http://192.168.*.*:* LAN erişimine izin verir
         List<String> origins = List.of(allowedOrigins.split(","));
-        config.setAllowedOrigins(origins);
+        config.setAllowedOriginPatterns(origins);
 
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));

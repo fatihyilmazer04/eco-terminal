@@ -12,5 +12,7 @@ public record AdminDashboardResponse(
     Float totalEnergyKwh,        // tüm bölgeler toplam enerji
     int activeFlightCount,       // SCHEDULED + BOARDING uçuş sayısı
     int savingSuggestionCount,   // WASTEFUL bölge sayısı
+    long totalUsers,             // sistemdeki toplam kullanıcı sayısı
+    int newUsersToday,           // bugün kayıt olan kullanıcı sayısı
     List<ZoneOccupancyResponse> zoneOccupancies
 ) {}

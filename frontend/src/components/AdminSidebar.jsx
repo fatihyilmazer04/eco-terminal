@@ -28,9 +28,13 @@ export default function AdminSidebar() {
       {/* Logo */}
       <div className="p-4 border-b border-gray-800">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-eco-green/20 border border-eco-green/40 flex items-center justify-center">
-            <span className="text-eco-green text-sm font-bold">E</span>
-          </div>
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect width="32" height="32" rx="7" fill="#0F2240"/>
+            <path d="M16 6C16 6 10 11 10 17c0 4 2 6.5 5 8" stroke="#2ECC71" strokeWidth="1.8" strokeLinecap="round" fill="none"/>
+            <path d="M16 6c0 0 6 5 6 11 0 4-2 6.5-5 8" stroke="#2ECC71" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.4"/>
+            <path d="M11 25C12.5 27 14 27.5 16 29c2-1.5 3.5-2 5-4" stroke="#2ECC71" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            <circle cx="16" cy="17" r="2.5" fill="#2ECC71" opacity="0.9"/>
+          </svg>
           <div>
             <p className="text-white text-sm font-bold leading-none">EcoTerminal</p>
             <p className="text-eco-green text-xs">Admin</p>

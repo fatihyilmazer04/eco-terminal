@@ -4,6 +4,7 @@ import { useSuggestedRoute, useAlternatives } from '../../hooks/useFlights'
 import { useHeatmap } from '../../hooks/useHeatmap'
 import OccupancyCard from '../../components/OccupancyCard'
 import AirportHeatmap from '../../components/AirportHeatmap'
+import QrScannerModal from '../../components/QrScannerModal'
 import { routeApi } from '../../api/routeApi'
 import { useLoyaltyContext } from '../../context/LoyaltyContext'
 import toast from 'react-hot-toast'
@@ -22,7 +23,7 @@ const LEVEL_LABELS = {
   CRITICAL: 'Kritik',
 }
 
-function StepCard({ step, isActive, isCompleted, journeyStarted, onCheckin, checkingIn }) {
+function StepCard({ step, isActive, isCompleted, journeyStarted, onCheckin, onQrScan, checkingIn }) {
   const isBusy = step.densityLevel === 'HIGH' || step.densityLevel === 'CRITICAL'
   const color  = LEVEL_COLORS[step.densityLevel] ?? '#9CA3AF'
   const label  = LEVEL_LABELS[step.densityLevel] ?? step.densityLevel
@@ -84,25 +85,23 @@ function StepCard({ step, isActive, isCompleted, journeyStarted, onCheckin, chec
           </div>
         )}
 
-        {/* "Buraya Ulaştım" butonu — yalnızca aktif adım */}
+        {/* Butonlar — yalnızca aktif adım */}
         {journeyStarted && isActive && !isCompleted && (
-          <button
-            onClick={onCheckin}
-            disabled={checkingIn}
-            className={`
-              mt-3 w-full py-2 rounded-lg text-sm font-semibold transition-all
-              flex items-center justify-center gap-2
-              ${checkingIn
-                ? 'bg-eco-green/40 text-gray-900 cursor-wait'
-                : 'bg-eco-green text-gray-900 hover:bg-green-400 active:scale-95 shadow-md shadow-eco-green/20'}
-            `}
-          >
-            {checkingIn ? (
-              <>Kaydediliyor...</>
-            ) : (
-              <>📍 {step.zoneName} — Buraya Ulaştım</>
-            )}
-          </button>
+          <div className="mt-3 flex flex-col gap-2">
+            <button
+              onClick={onQrScan}
+              disabled={checkingIn}
+              className={`
+                w-full py-2.5 rounded-lg text-sm font-semibold transition-all
+                flex items-center justify-center gap-2
+                ${checkingIn
+                  ? 'bg-eco-green/40 text-gray-900 cursor-wait'
+                  : 'bg-eco-green text-gray-900 hover:bg-green-400 active:scale-95 shadow-md shadow-eco-green/20'}
+              `}
+            >
+              {checkingIn ? 'Kaydediliyor...' : '📷 QR Okut'}
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -120,6 +119,55 @@ export default function RouteSuggestionPage() {
   const [completedSteps,  setCompletedSteps]  = useState(new Set())
   const [journeyComplete, setJourneyComplete] = useState(false)
   const [checkingIn,      setCheckingIn]      = useState(false)
+
+  // QR Scanner modal state
+  const [qrModalOpen,    setQrModalOpen]    = useState(false)
+  const [qrTargetStep,   setQrTargetStep]   = useState(null)   // QR taraması yapılacak step
+
+  // QR modal aç
+  const handleOpenQrScanner = (step) => {
+    setQrTargetStep(step)
+    setQrModalOpen(true)
+  }
+
+  // QR tarandıktan sonra backend doğrulaması
+  const handleQrScanned = async (scannedText) => {
+    if (!qrTargetStep || !route) return
+    setCheckingIn(true)
+    try {
+      // 1. QR içeriğini parse et (JSON veya düz token)
+      let scannedToken = scannedText.trim()
+      try {
+        const parsed = JSON.parse(scannedText)
+        if (parsed.token) scannedToken = parsed.token
+      } catch {
+        // Düz token girilmişse olduğu gibi kullan
+      }
+
+      // 2. Backend'de QR doğrula
+      const verifyRes = await routeApi.verifyQr({
+        scannedToken,
+        expectedZoneName: qrTargetStep.zoneName,
+      })
+      const verifyData = verifyRes.data.data
+
+      if (!verifyData.verified) {
+        toast.error(verifyData.message, { duration: 4000 })
+        return
+      }
+
+      // 3. QR geçerli → adımı check-in yap (mevcut mantık)
+      toast.success(verifyData.message)
+      await handleCheckin(qrTargetStep)
+
+    } catch (err) {
+      const msg = err.response?.data?.message ?? 'QR doğrulama başarısız'
+      toast.error(msg)
+    } finally {
+      setCheckingIn(false)
+      setQrTargetStep(null)
+    }
+  }
 
   const handleStartJourney = () => {
     if (!route?.steps?.length) return
@@ -221,7 +269,8 @@ export default function RouteSuggestionPage() {
     </div>
   )
 
-  const heatmapZones  = heatmapData?.zones ?? []
+  const heatmapZones = heatmapData?.zones ?? []
+
   const hasMapCoords  = heatmapZones.some(z => z.posX != null)
   const totalSteps    = route.steps.length
   const doneCount     = completedSteps.size
@@ -288,7 +337,7 @@ export default function RouteSuggestionPage() {
             <p className="text-xs text-gray-400 mt-2">
               Şu an: <span className="text-eco-green font-medium">
                 {route.steps.find(s => s.stepNumber === activeStep)?.zoneName}
-              </span> — hedefe ulaştığınızda "Buraya Ulaştım"a basın
+              </span> — hedefe ulaştığınızda "📷 QR Okut"a basın
             </p>
           )}
         </div>
@@ -350,10 +399,19 @@ export default function RouteSuggestionPage() {
             isCompleted={completedSteps.has(step.stepNumber)}
             journeyStarted={journeyStarted}
             onCheckin={() => handleCheckin(step)}
+            onQrScan={() => handleOpenQrScanner(step)}
             checkingIn={checkingIn}
           />
         ))}
       </div>
+
+      {/* QR Tarayıcı Modal */}
+      <QrScannerModal
+        isOpen={qrModalOpen}
+        onClose={() => { setQrModalOpen(false); setQrTargetStep(null) }}
+        onScan={handleQrScanned}
+        expectedZone={qrTargetStep?.zoneName}
+      />
 
       {/* ── Terminal Haritası ─────────────────────────────────────── */}
       {hasMapCoords && (

@@ -2,13 +2,11 @@ import React, { useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, ReferenceLine,
-  LineChart, Line, Legend, ComposedChart,
 } from 'recharts'
 import KpiCard from '../../components/KpiCard'
 import PredictionCard from '../../components/PredictionCard'
 import { useAIPredictions } from '../../hooks/useAIPredictions'
 import { predictionApi } from '../../api/predictionApi'
-import axiosInstance from '../../api/axiosInstance'
 
 const RISK_ORDER = { HIGH: 0, MEDIUM: 1, LOW: 2 }
 const BAR_COLOR  = { HIGH: '#E74C3C', MEDIUM: '#F39C12', LOW: '#2ECC71' }
@@ -25,21 +23,10 @@ function formatTime(isoString) {
 
 /** Çok horizonlu tahmin modalı */
 function ForecastModal({ prediction, onClose }) {
-  // Occupancy tab state
-  const [forecast, setForecast] = useState(null)
-  const [loading, setLoading]   = useState(true)
-  const [tab, setTab]           = useState('short')       // 'short' | 'long'
-
-  // Top-level tab
+  const [forecast, setForecast]   = useState(null)
+  const [loading, setLoading]     = useState(true)
   const [activeTab, setActiveTab] = useState('occupancy') // 'occupancy' | 'energy'
 
-  // Energy tab state
-  const [energyRange, setEnergyRange]     = useState('24H')
-  const [energyData, setEnergyData]       = useState(null)
-  const [energyLoading, setEnergyLoading] = useState(false)
-  const [energyError, setEnergyError]     = useState(null)
-
-  // Fetch occupancy forecast
   React.useEffect(() => {
     setLoading(true)
     predictionApi.getZoneForecast(prediction.zoneId)
@@ -48,82 +35,55 @@ function ForecastModal({ prediction, onClose }) {
       .finally(() => setLoading(false))
   }, [prediction.zoneId])
 
-  // Fetch energy forecast when energy tab is active or range changes
-  React.useEffect(() => {
-    if (activeTab !== 'energy') return
-    setEnergyLoading(true)
-    setEnergyError(null)
-    setEnergyData(null)
-    axiosInstance
-      .get(`/api/ai/predictions/zone-forecast?zoneId=${prediction.zoneId}&type=ENERGY&range=${energyRange}`)
-      .then(r => setEnergyData(r.data.data))
-      .catch(() => setEnergyError('Tahmin verisi alınamadı'))
-      .finally(() => setEnergyLoading(false))
-  }, [activeTab, energyRange, prediction.zoneId])
+  // Kısa vade noktaları (her iki sekme için de kaynak)
+  const shortTermPoints = forecast?.shortTerm ?? []
 
-  // Occupancy chart data
-  const activePoints = forecast
-    ? (tab === 'short' ? forecast.shortTerm : forecast.longTerm)
-    : []
-
-  const chartData = activePoints.map(p => ({
+  // Yoğunluk grafik verisi
+  const occChartData = shortTermPoints.map(p => ({
     time:    p.time,
     doluluk: parseFloat((p.predictedLoad * 100).toFixed(1)),
     risk:    p.riskLevel,
     conf:    parseFloat((p.confidence * 100).toFixed(0)),
   }))
 
-  // Client-side fallback (deterministic) — backend veri yokken
-  function clientFallback(range, zoneId) {
-    const labels = {
-      '24H': Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`),
-      '1W':  ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'],
-      '1M':  ['1. Hafta', '2. Hafta', '3. Hafta', '4. Hafta'],
-    }
-    return (labels[range] ?? labels['24H']).map((label, i) => ({
-      label,
-      primaryValue:   parseFloat((12 + ((zoneId * 3 + i * 7) % 15)).toFixed(1)),
-      secondaryValue: parseFloat((300 + ((zoneId * 5 + i * 11) % 300)).toFixed(0)),
-      status:         'NORMAL',
-    }))
-  }
-
-  // Energy chart data
-  const rawPoints = energyData?.dataPoints ?? energyData?.data?.dataPoints ?? []
-  const useFallback = rawPoints.length === 0
-  const sourcePoints = useFallback
-    ? clientFallback(energyRange, prediction.zoneId)
-    : rawPoints
-
-  const energyPoints = sourcePoints.map(p => ({
-    label:  p.label,
-    kwh:    Number(p.primaryValue ?? 0),
-    lux:    Number(p.secondaryValue ?? 400),
-    status: p.status ?? 'NORMAL',
+  // Enerji grafik verisi — kWh = 5.0 + predictedLoad * 15.0 (maks 20 kWh @ %100 doluluk)
+  const energyChartData = shortTermPoints.map(p => ({
+    time: p.time,
+    kwh:  parseFloat((5.0 + p.predictedLoad * 15.0).toFixed(1)),
+    conf: parseFloat((p.confidence * 100).toFixed(0)),
   }))
 
-  const avgKwh = energyPoints.length
-    ? energyPoints.reduce((s, p) => s + p.kwh, 0) / energyPoints.length
-    : 0
-
-  function getEnergyStatus(kwh) {
-    if (kwh > avgKwh * 1.2) return { label: 'Yüksek Tüketim', cls: 'text-red-400' }
-    if (kwh < avgKwh * 0.8) return { label: 'Düşük Tüketim', cls: 'text-eco-green' }
-    return { label: 'Normal', cls: 'text-gray-400' }
-  }
-
-  const EnergyTooltip = ({ active, payload, label }) => {
-    if (!active || !payload?.length) return null
-    const kwh = payload.find(p => p.dataKey === 'kwh')?.value ?? 0
-    const lux = payload.find(p => p.dataKey === 'lux')?.value ?? 0
-    return (
-      <div className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs">
-        <p className="text-gray-300 mb-1">{label}</p>
-        <p className="text-yellow-400">{Number(kwh).toFixed(2)} kWh</p>
-        <p className="text-blue-400">{lux} Lux</p>
+  // Ortak info kartları + uyarı kutusu (her iki sekme için)
+  const InfoCards = () => forecast ? (
+    <>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+          <p className="text-xs text-gray-400 mb-1">Mevcut Yük</p>
+          <p className="text-xl font-bold text-white">%{((forecast.currentLoad ?? 0) * 100).toFixed(0)}</p>
+        </div>
+        <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+          <p className="text-xs text-gray-400 mb-1">Risk</p>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${RISK_BADGE[forecast.currentRisk] ?? ''}`}>
+            {forecast.currentRisk}
+          </span>
+        </div>
+        <div className="bg-gray-700/50 rounded-lg p-3 text-center">
+          <p className="text-xs text-gray-400 mb-1">Model Güveni</p>
+          <p className="text-lg font-bold text-eco-green">{forecast.modelConfidence}</p>
+        </div>
       </div>
-    )
-  }
+      {forecast.recommendation && (
+        <div className="px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-sm">
+          💡 {forecast.recommendation}
+        </div>
+      )}
+    </>
+  ) : null
+
+  // Yükleniyor / veri yok durumu
+  const ChartPlaceholder = ({ message }) => message
+    ? <div className="h-40 flex items-center justify-center text-gray-500 text-sm">{message}</div>
+    : <div className="h-40 bg-gray-700/40 rounded animate-pulse" />
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -166,61 +126,16 @@ function ForecastModal({ prediction, onClose }) {
           {/* ── Yoğunluk Sekmesi ── */}
           {activeTab === 'occupancy' && (
             <>
-              {forecast && (
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-gray-700/50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-400 mb-1">Mevcut Yük</p>
-                    <p className="text-xl font-bold text-white">%{((forecast.currentLoad ?? 0) * 100).toFixed(0)}</p>
-                  </div>
-                  <div className="bg-gray-700/50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-400 mb-1">Risk</p>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${RISK_BADGE[forecast.currentRisk] ?? ''}`}>
-                      {forecast.currentRisk}
-                    </span>
-                  </div>
-                  <div className="bg-gray-700/50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-400 mb-1">Model Güveni</p>
-                    <p className="text-lg font-bold text-eco-green">{forecast.modelConfidence}</p>
-                  </div>
-                </div>
-              )}
-
-              {forecast?.recommendation && (
-                <div className="px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-300 text-sm">
-                  💡 {forecast.recommendation}
-                </div>
-              )}
-
-              {/* Kısa/Uzun vade seçici */}
-              <div className="flex gap-2">
-                {[
-                  { key: 'short', label: 'Kısa Vade (30–120 dk)' },
-                  { key: 'long',  label: 'Uzun Vade (6–24 sa)' },
-                ].map(t => (
-                  <button
-                    key={t.key}
-                    onClick={() => setTab(t.key)}
-                    className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${
-                      tab === t.key
-                        ? 'bg-eco-green/20 text-eco-green border border-eco-green/40'
-                        : 'bg-gray-700 text-gray-400 border border-gray-600 hover:border-gray-500'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
+              <InfoCards />
 
               {loading ? (
-                <div className="h-40 bg-gray-700/40 rounded animate-pulse" />
+                <ChartPlaceholder />
               ) : !forecast ? (
-                <div className="h-40 flex items-center justify-center text-gray-500 text-sm">
-                  Tahmin verisi alınamadı.
-                </div>
+                <ChartPlaceholder message="Tahmin verisi alınamadı." />
               ) : (
                 <div className="bg-gray-900/50 rounded-lg p-3">
                   <ResponsiveContainer width="100%" height={160}>
-                    <BarChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                    <BarChart data={occChartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis dataKey="time" tick={{ fill: '#9CA3AF', fontSize: 11 }} tickLine={false} />
                       <YAxis tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} axisLine={false}
@@ -232,7 +147,7 @@ function ForecastModal({ prediction, onClose }) {
                       <ReferenceLine y={85} stroke="#E74C3C" strokeDasharray="4 4" strokeWidth={1.5}
                         label={{ value: '%85 Kritik', fill: '#E74C3C', fontSize: 9, position: 'right' }} />
                       <Bar dataKey="doluluk" radius={[3, 3, 0, 0]}>
-                        {chartData.map((entry, i) => (
+                        {occChartData.map((entry, i) => (
                           <Cell key={i} fill={BAR_COLOR[entry.risk] ?? '#6B7280'} />
                         ))}
                       </Bar>
@@ -240,7 +155,7 @@ function ForecastModal({ prediction, onClose }) {
                   </ResponsiveContainer>
 
                   <div className="mt-3 grid grid-cols-3 gap-2">
-                    {activePoints.map((p, i) => (
+                    {shortTermPoints.map((p, i) => (
                       <div key={i} className="text-center">
                         <p className="text-xs text-gray-500">{p.time}</p>
                         <p className="text-sm font-semibold" style={{ color: BAR_COLOR[p.riskLevel] }}>
@@ -258,84 +173,40 @@ function ForecastModal({ prediction, onClose }) {
           {/* ── Enerji Sekmesi ── */}
           {activeTab === 'energy' && (
             <>
-              {/* Zaman aralığı seçici */}
-              <div className="flex gap-2">
-                {[
-                  { key: '24H', label: '24 Saat' },
-                  { key: '1W',  label: '1 Hafta' },
-                  { key: '1M',  label: '1 Ay' },
-                ].map(r => (
-                  <button
-                    key={r.key}
-                    onClick={() => setEnergyRange(r.key)}
-                    className={`text-sm px-3 py-1.5 rounded-lg transition-colors border ${
-                      energyRange === r.key
-                        ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40'
-                        : 'bg-gray-700 text-gray-400 border-gray-600 hover:border-gray-500'
-                    }`}
-                  >
-                    {r.label}
-                  </button>
-                ))}
-              </div>
+              <InfoCards />
 
-              {energyLoading ? (
-                <div className="flex items-center justify-center h-40">
-                  <div className="w-8 h-8 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin" />
-                </div>
-              ) : energyError ? (
-                <div className="h-40 flex items-center justify-center text-red-400 text-sm">{energyError}</div>
+              {loading ? (
+                <ChartPlaceholder />
+              ) : !forecast ? (
+                <ChartPlaceholder message="Tahmin verisi alınamadı." />
               ) : (
-                <>
-                  {useFallback && (
-                    <div className="px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-xs">
-                      Bu bölge için enerji verisi henüz yok, tahmini değerler gösteriliyor.
-                    </div>
-                  )}
-                  <div className="bg-gray-900/50 rounded-lg p-3">
-                    <ResponsiveContainer width="100%" height={180}>
-                      <ComposedChart data={energyPoints} margin={{ top: 5, right: 15, left: -5, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis dataKey="label" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} interval="preserveStartEnd" />
-                        <YAxis yAxisId="left" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} axisLine={false}
-                               label={{ value: 'kWh', angle: -90, position: 'insideLeft', fill: '#9CA3AF', fontSize: 10, dy: 20 }} />
-                        <YAxis yAxisId="right" orientation="right" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} axisLine={false}
-                               label={{ value: 'Lux', angle: 90, position: 'insideRight', fill: '#9CA3AF', fontSize: 10, dy: -15 }} />
-                        <Tooltip content={<EnergyTooltip />} />
-                        <Bar  yAxisId="left"  dataKey="kwh" name="kWh" fill="#F59E0B" radius={[3, 3, 0, 0]} />
-                        <Line yAxisId="right" dataKey="lux" name="Lux" stroke="#3B82F6" strokeWidth={2} dot={false} type="monotone" />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
+                <div className="bg-gray-900/50 rounded-lg p-3">
+                  <ResponsiveContainer width="100%" height={160}>
+                    <BarChart data={energyChartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                      <XAxis dataKey="time" tick={{ fill: '#9CA3AF', fontSize: 11 }} tickLine={false} />
+                      <YAxis tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} axisLine={false}
+                             domain={[0, 22]} tickFormatter={v => `${v}kWh`} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '0.5rem', fontSize: '11px' }}
+                        formatter={(v) => [`${v} kWh`, 'Tahmini Enerji']}
+                      />
+                      <ReferenceLine y={17} stroke="#F59E0B" strokeDasharray="4 4" strokeWidth={1.5}
+                        label={{ value: '17 kWh Yüksek', fill: '#F59E0B', fontSize: 9, position: 'right' }} />
+                      <Bar dataKey="kwh" fill="#F59E0B" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
 
-                  <div className="overflow-x-auto rounded-lg border border-gray-700">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-gray-400 text-left border-b border-gray-700 bg-gray-900/50">
-                          <th className="px-3 py-2 font-medium">Zaman</th>
-                          <th className="px-3 py-2 font-medium text-right">kWh</th>
-                          <th className="px-3 py-2 font-medium text-right">Aydınlatma (Lux)</th>
-                          <th className="px-3 py-2 font-medium text-right">Durum</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-700/50">
-                        {energyPoints.map((p, i) => {
-                          const statusCls = p.status === 'YÜKSEK' ? 'text-red-400'
-                                          : p.status === 'DÜŞÜK'  ? 'text-eco-green'
-                                          : 'text-gray-400'
-                          return (
-                            <tr key={i} className="hover:bg-gray-700/30 transition-colors">
-                              <td className="px-3 py-2 text-gray-300">{p.label}</td>
-                              <td className="px-3 py-2 text-right text-gray-300">{p.kwh.toFixed(2)}</td>
-                              <td className="px-3 py-2 text-right text-gray-300">{Math.round(p.lux)}</td>
-                              <td className={`px-3 py-2 text-right font-medium ${statusCls}`}>{p.status}</td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    {energyChartData.map((p, i) => (
+                      <div key={i} className="text-center">
+                        <p className="text-xs text-gray-500">{p.time}</p>
+                        <p className="text-sm font-semibold text-amber-400">{p.kwh} kWh</p>
+                        <p className="text-xs text-gray-600">güven: %{p.conf}</p>
+                      </div>
+                    ))}
                   </div>
-                </>
+                </div>
               )}
             </>
           )}
@@ -376,12 +247,11 @@ export default function AIPredictionsPage() {
     riskLevel: p.riskLevel,
   }))
 
-  // Türetilmiş AI özet verileri
-  const alertZones     = highRisk.map(p => p.zoneName)
-  const suggestedZones = predictions
-    .filter(p => p.riskLevel === 'LOW')
-    .map(p => p.zoneName)
-    .slice(0, 4)
+  // Türetilmiş AI özet verileri — highRisk backend'den unique gelir, güvence için tekilleştir
+  const alertZones     = [...new Set(highRisk.map(p => p.zoneName))]
+  const suggestedZones = [...new Set(
+    predictions.filter(p => p.riskLevel === 'LOW').map(p => p.zoneName)
+  )].slice(0, 4)
 
   const aiSummary = alertZones.length > 0
     ? `${alertZones.slice(0, 2).join(' ve ')} yoğunluk eşiğini aştı.${
@@ -502,7 +372,7 @@ export default function AIPredictionsPage() {
       </div>
 
       {/* HIGH risk alert banner */}
-      {highRisk.length > 0 && (
+      {highCount > 0 && (
         <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30">
           <span className="relative flex h-3 w-3 mt-0.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
@@ -510,10 +380,10 @@ export default function AIPredictionsPage() {
           </span>
           <div>
             <p className="text-red-400 font-semibold text-sm">
-              {highRisk.length} bölge YÜKSEK RİSK seviyesinde!
+              {highCount} bölge YÜKSEK RİSK seviyesinde!
             </p>
             <p className="text-red-400/70 text-xs mt-0.5">
-              {highRisk.map(p => p.zoneName).join(', ')} — acil müdahale önerilir
+              {alertZones.join(', ')} — acil müdahale önerilir
             </p>
           </div>
         </div>

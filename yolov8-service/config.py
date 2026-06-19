@@ -14,9 +14,9 @@ DB_USER     = os.environ.get("POSTGRES_USER", os.environ.get("DB_USER", "ecoterm
 DB_PASSWORD = os.environ.get("POSTGRES_PASSWORD", os.environ.get("DB_PASSWORD", "ecoterminal123"))
 
 # ── YOLOv8 ───────────────────────────────────────────────────────────────────
-YOLO_MODEL      = os.environ.get("YOLO_MODEL", "yolov8n.pt")
+YOLO_MODEL      = os.environ.get("YOLO_MODEL", "yolov8s.pt")
 PERSON_CLASS_ID = 0          # COCO dataset: class 0 = person
-CONF_THRESHOLD  = 0.35       # Minimum detection confidence
+CONF_THRESHOLD  = 0.20       # Minimum detection confidence
 
 # ── Servis ───────────────────────────────────────────────────────────────────
 PORT       = int(os.environ.get("PORT", 5001))
@@ -25,6 +25,10 @@ DEBUG_MODE = FLASK_ENV == "development"
 
 # ── Scheduler ────────────────────────────────────────────────────────────────
 DETECTION_INTERVAL_MINUTES = 15   # Her 15 dakikada bir batch detection
+
+# Manuel görüntü analizi akışı kullanılıyor; otomatik tarama varsayılan olarak kapalı.
+# Etkinleştirmek için: ENABLE_AUTO_SCAN=true environment variable set et.
+ENABLE_AUTO_SCAN = os.environ.get("ENABLE_AUTO_SCAN", "false").lower() == "true"
 
 # ── Sentetik frame ───────────────────────────────────────────────────────────
 FRAME_WIDTH  = 640

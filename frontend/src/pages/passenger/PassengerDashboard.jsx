@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useMyFlights } from '../../hooks/useFlights'
 import { useNotifications } from '../../hooks/useNotifications'
-import { useHeatmap } from '../../hooks/useHeatmap'
 import { loungeApi } from '../../api/loungeApi'
 import EcoPointsCard from '../../components/EcoPointsCard'
 
@@ -305,11 +304,6 @@ export default function PassengerDashboard() {
   const { user } = useAuth()
   const { data: flights, loading: flightsLoading } = useMyFlights()
   const { notifications, unreadCount, loading: notifLoading } = useNotifications()
-  const { data: heatmapData } = useHeatmap(60000)
-
-  // Kritik bölgeler heatmap'ten
-  const alertZones = heatmapData?.alertZones ?? []
-
   return (
     <div className="min-h-screen bg-gray-900 p-6 max-w-2xl mx-auto space-y-5">
 
@@ -323,25 +317,7 @@ export default function PassengerDashboard() {
         </p>
       </div>
 
-      {/* 1 — Kritik uyarı banner */}
-      {alertZones.length > 0 && (
-        <div className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30
-                        flex items-start gap-3">
-          <span className="text-red-400 text-xl flex-shrink-0">⚠</span>
-          <div className="flex-1">
-            <p className="text-red-400 font-medium text-sm">
-              {alertZones.join(', ')} kritik yoğunlukta!
-              Alternatif bölgelere yönlendiriliyorsunuz.
-            </p>
-          </div>
-          <Link to="/passenger/route"
-                className="text-xs text-red-400 underline whitespace-nowrap">
-            Rota öner
-          </Link>
-        </div>
-      )}
-
-      {/* 2 — Yaklaşan uçuş özeti */}
+      {/* 1 — Yaklaşan uçuş özeti */}
       <UpcomingFlightCard flights={flights} loading={flightsLoading} />
 
       {/* 3 — Eko-Puan Kartı */}

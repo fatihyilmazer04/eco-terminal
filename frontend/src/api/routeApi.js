@@ -22,4 +22,14 @@ export const routeApi = {
   completeRoute(flightId) {
     return axiosInstance.post('/api/routes/complete', { flightId })
   },
+
+  /**
+   * POST /api/routes/verify-qr
+   * QR kodun beklenen zone ile eşleşip eşleşmediğini doğrular.
+   * body: { scannedToken, expectedZoneName }
+   * response: { verified, zoneName, message }
+   */
+  verifyQr({ scannedToken, expectedZoneName }) {
+    return axiosInstance.post('/api/routes/verify-qr', { scannedToken, expectedZoneName })
+  },
 }

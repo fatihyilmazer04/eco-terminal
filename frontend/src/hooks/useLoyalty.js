@@ -17,19 +17,22 @@ export function useLoyalty() {
   const [wallet, setWallet]             = useState(null)
   const [transactions, setTransactions] = useState([])
   const [rewards, setRewards]           = useState([])
+  const [redemptions, setRedemptions]   = useState([])
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState(null)
 
   const fetchAll = useCallback(async () => {
     try {
-      const [wRes, tRes, rRes] = await Promise.all([
+      const [wRes, tRes, rRes, redRes] = await Promise.all([
         loyaltyApi.getWallet(),
         loyaltyApi.getTransactions(),
         loyaltyApi.getRewards(),
+        loyaltyApi.getMyRedemptions(),
       ])
       setWallet(wRes.data.data)
       setTransactions(tRes.data.data ?? [])
       setRewards(rRes.data.data ?? [])
+      setRedemptions(redRes.data.data ?? [])
       setError(null)
     } catch (err) {
       setError(err.response?.data?.message || 'Loyalty verisi alınamadı')
@@ -74,5 +77,5 @@ export function useLoyalty() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  return { wallet, transactions, rewards, loading, error, spendPoints, earnPoints, refetch: fetchAll }
+  return { wallet, transactions, rewards, redemptions, loading, error, spendPoints, earnPoints, refetch: fetchAll }
 }

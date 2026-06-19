@@ -1,17 +1,20 @@
 package com.ecoterminal.service;
 
 import com.ecoterminal.model.dto.ChatbotResponse;
-import com.ecoterminal.model.entity.DensityLevel;
+import com.ecoterminal.model.dto.ProviderInfoResponse;
 import com.ecoterminal.model.entity.OccupancyReading;
-import com.ecoterminal.model.entity.Ticket;
 import com.ecoterminal.model.entity.Zone;
 import com.ecoterminal.model.entity.ZoneStatus;
 import com.ecoterminal.model.entity.ZoneType;
+import com.ecoterminal.repository.EcoWalletRepository;
+import com.ecoterminal.repository.NotificationRepository;
 import com.ecoterminal.repository.OccupancyReadingRepository;
 import com.ecoterminal.repository.TicketRepository;
 import com.ecoterminal.repository.ZoneRepository;
-import lombok.RequiredArgsConstructor;
+import com.ecoterminal.service.chatbot.ChatContext;
+import com.ecoterminal.service.chatbot.ChatbotProvider;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,30 +25,21 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Kural tabanlı chatbot servisi.
- * Harici LLM kullanmaz — keyword eşleştirme + DB sorguları ile çalışır.
+ * LLM tabanlı chatbot servisi.
+ *
+ * Mimari:
+ *   1. İstekten sağlayıcı adı okunur ("cloud" / "local"). Yoksa default kullanılır.
+ *   2. RAG: DB'den gerçek zamanlı veriler çekilir (yoğunluk, uçuş, eco puan).
+ *   3. ChatContext oluşturulur ve seçili provider'a iletilir.
+ *   4. Provider LLM cevabını döner; ChatbotResponse içinde sarılır.
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ChatbotService {
-
-    private final ZoneRepository zoneRepository;
-    private final OccupancyReadingRepository occupancyReadingRepository;
-    private final TicketRepository ticketRepository;
 
     private static final DateTimeFormatter TIME_FMT =
             DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.of("Europe/Istanbul"));
 
-    private static final String HELP_MESSAGE =
-            "Şu konularda yardımcı olabilirim:\n" +
-            "• \"En sakin lounge nerede?\" — boş bölge önerisi\n" +
-            "• \"Gate A1 dolu mu?\" — belirli bölge doluluğu\n" +
-            "• \"Nereye gideyim?\" — en sakin 3 bölge önerisi\n" +
-            "• \"Uçuşum nerede?\" — bilet ve kapı bilgisi\n" +
-            "• \"Genel durum nasıl?\" — terminal yoğunluk özeti";
-
-    // ── Tip isimlerinin Türkçe karşılıkları ─────────────────────────────────
     private static final Map<ZoneType, String> TYPE_TR = Map.of(
             ZoneType.GATE,     "Kapı",
             ZoneType.LOUNGE,   "Bekleme Salonu",
@@ -55,259 +49,163 @@ public class ChatbotService {
             ZoneType.OTHER,    "Diğer"
     );
 
-    // ── Yoğunluk seviyesinin Türkçe karşılıkları ────────────────────────────
-    private static final Map<DensityLevel, String> DENSITY_TR = Map.of(
-            DensityLevel.LOW,      "Sakin",
-            DensityLevel.MEDIUM,   "Orta yoğun",
-            DensityLevel.HIGH,     "Yoğun",
-            DensityLevel.CRITICAL, "Kritik seviyede yoğun"
-    );
+    private final Map<String, ChatbotProvider> providers;
+    private final ZoneRepository              zoneRepository;
+    private final OccupancyReadingRepository  occupancyRepo;
+    private final TicketRepository            ticketRepository;
+    private final EcoWalletRepository         walletRepository;
+    private final NotificationRepository      notificationRepository;
+    private final String                      defaultProvider;
+
+    public ChatbotService(
+            List<ChatbotProvider> providerList,
+            ZoneRepository zoneRepository,
+            OccupancyReadingRepository occupancyRepo,
+            TicketRepository ticketRepository,
+            EcoWalletRepository walletRepository,
+            NotificationRepository notificationRepository,
+            @Value("${app.chatbot.default-provider:cloud}") String defaultProvider) {
+
+        this.providers       = providerList.stream()
+                .collect(Collectors.toMap(ChatbotProvider::getProviderName, p -> p));
+        this.zoneRepository  = zoneRepository;
+        this.occupancyRepo   = occupancyRepo;
+        this.ticketRepository = ticketRepository;
+        this.walletRepository = walletRepository;
+        this.notificationRepository = notificationRepository;
+        this.defaultProvider  = defaultProvider;
+    }
 
     // ── Ana entry point ──────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
-    public ChatbotResponse ask(String message, Long userId) {
+    public ChatbotResponse ask(String message, String requestedProvider, Long userId) {
         if (message == null || message.isBlank()) {
-            return ChatbotResponse.of(HELP_MESSAGE);
+            String pName = resolveProviderName(requestedProvider);
+            return ChatbotResponse.of("Lütfen bir soru yazın.", pName);
         }
 
-        // Türkçe büyük/küçük harf dönüşümü için Locale.ROOT yeterli (ASCII benzer)
-        String lower = message.toLowerCase(Locale.ROOT)
-                               .replace("ı", "i")
-                               .replace("ö", "o")
-                               .replace("ü", "u")
-                               .replace("ş", "s")
-                               .replace("ç", "c")
-                               .replace("ğ", "g");
+        // Sağlayıcı seçimi
+        String providerKey = resolveProviderName(requestedProvider);
+        ChatbotProvider provider = providers.get(providerKey);
 
-        // Verileri bir kez çek — tüm intent handler'lar paylaşır
+        if (provider == null) {
+            log.warn("Bilinmeyen sağlayıcı '{}', default'a düşülüyor: {}", requestedProvider, defaultProvider);
+            provider = providers.get(defaultProvider);
+        }
+
+        if (provider == null || !provider.isAvailable()) {
+            String displayName = provider != null ? provider.getDisplayName() : providerKey;
+            return ChatbotResponse.of(
+                    displayName + " şu an kullanılamıyor. Lütfen ayarlardan farklı bir mod seçin.",
+                    providerKey
+            );
+        }
+
+        // RAG: gerçek zamanlı bağlam oluştur
+        ChatContext context = buildContext(userId);
+
+        log.debug("Chatbot isteği: userId={}, provider={}, mesaj='{}'", userId, providerKey, message);
+
+        // LLM'e ilet (zengin metadata destekli)
+        return provider.generateRichResponse(message, context);
+    }
+
+    /** Mevcut provider'ların listesini ve durumlarını döner (ayar ekranı için). */
+    public List<ProviderInfoResponse> getProviders() {
+        return providers.values().stream()
+                .sorted(Comparator.comparing(ChatbotProvider::getProviderName))
+                .map(p -> new ProviderInfoResponse(p.getProviderName(), p.getDisplayName(), p.isAvailable()))
+                .toList();
+    }
+
+    // ── RAG: Bağlam Oluşturma ────────────────────────────────────────────────
+
+    private ChatContext buildContext(Long userId) {
+        // Zaman
+        String now = TIME_FMT.format(Instant.now());
+
+        // Zone yoğunlukları
         List<Zone> zones = zoneRepository.findByStatus(ZoneStatus.ACTIVE);
         Map<Long, Float> densityMap = buildDensityMap();
 
-        // ── Intent 1: Uçuş / kapı bilgisi ───────────────────────────────────
-        if (containsAny(lower, "ucus", "ucak", "ucagim", "kapim", "bilet", "gate",
-                        "kalkis", "nerede kalkiyor", "ne zaman")) {
-            return handleFlightInfo(userId);
-        }
-
-        // ── Intent 2: En boş/sakin bölge ────────────────────────────────────
-        if (containsAny(lower, "en bos", "en sakin", "en az", "sessiz", "kalabalik degil",
-                        "bos lounge", "bos kapi", "bos alan")) {
-            ZoneType filter = detectZoneTypeFilter(lower);
-            return handleLeastDense(zones, densityMap, filter);
-        }
-
-        // ── Intent 3: Öneri / yönlendirme ───────────────────────────────────
-        if (containsAny(lower, "nereye", "oneri", "tavsiye", "yonlendir",
-                        "gideyim", "gitsem", "nereye gitsem", "sakin yer")) {
-            return handleRecommendation(zones, densityMap);
-        }
-
-        // ── Intent 4: Belirli zone doluluğu ─────────────────────────────────
-        Optional<Zone> matched = findZoneInMessage(lower, zones);
-        if (matched.isPresent()) {
-            return handleZoneOccupancy(matched.get(), densityMap);
-        }
-
-        // ── Intent 5: Genel yoğunluk özeti ──────────────────────────────────
-        if (containsAny(lower, "durum", "genel", "ozet", "kac zone", "terminal",
-                        "yogunluk", "anlık", "hepsi", "tumu", "nasil")) {
-            return handleSummary(zones, densityMap);
-        }
-
-        // ── Tanınmayan ───────────────────────────────────────────────────────
-        log.debug("Chatbot: tanınmayan niyet — mesaj='{}'", message);
-        return ChatbotResponse.of(HELP_MESSAGE);
-    }
-
-    // ── Intent Handler'lar ───────────────────────────────────────────────────
-
-    private ChatbotResponse handleFlightInfo(Long userId) {
-        List<Ticket> tickets = ticketRepository.findActiveTicketsWithFlight(userId);
-
-        if (tickets.isEmpty()) {
-            return ChatbotResponse.of(
-                    "Aktif biletiniz bulunamadı. Uçuş bilgilerinizi \"Uçuşlarım\" sayfasından kontrol edebilirsiniz."
-            );
-        }
-
-        StringBuilder sb = new StringBuilder();
-        List<String> gates = new ArrayList<>();
-
-        for (Ticket ticket : tickets) {
-            var flight = ticket.getFlight();
-            String flightCode = flight.getFlightCode();
-            String destination = flight.getDestination();
-            String depTime = TIME_FMT.format(flight.getDepartureTime());
-            String status = statusTr(flight.getStatus().name());
-
-            sb.append(String.format("✈ %s → %s%n", flightCode, destination));
-            sb.append(String.format("  Kalkış: %s | Durum: %s%n", depTime, status));
-
-            if (flight.getGate() != null) {
-                String gateName = flight.getGate().getZoneName();
-                sb.append(String.format("  Kapı: %s%n", gateName));
-                gates.add(gateName);
-            } else {
-                sb.append("  Kapı: Henüz atanmadı\n");
-            }
-            sb.append("\n");
-        }
-
-        sb.append("İyi uçuşlar! 🌿");
-
-        return ChatbotResponse.withZones(sb.toString().trim(), gates.isEmpty() ? null : gates);
-    }
-
-    private ChatbotResponse handleLeastDense(List<Zone> zones, Map<Long, Float> densityMap,
-                                              ZoneType typeFilter) {
-        List<Zone> candidates = zones.stream()
-                .filter(z -> typeFilter == null || z.getType() == typeFilter)
-                .filter(z -> densityMap.containsKey(z.getZoneId()))
-                .sorted(Comparator.comparing(z -> densityMap.getOrDefault(z.getZoneId(), 1f)))
+        List<ChatContext.ZoneInfo> hotZones = zones.stream()
+                .filter(z -> {
+                    Float d = densityMap.get(z.getZoneId());
+                    return d != null && d >= 0.60f;
+                })
+                .sorted(Comparator.comparing((Zone z) -> densityMap.getOrDefault(z.getZoneId(), 0f)).reversed())
+                .limit(5)
+                .map(z -> new ChatContext.ZoneInfo(
+                        z.getZoneName(),
+                        TYPE_TR.getOrDefault(z.getType(), z.getType().name()),
+                        Math.round(densityMap.get(z.getZoneId()) * 100)))
                 .toList();
 
-        if (candidates.isEmpty()) {
-            String typeMsg = typeFilter != null ? " (" + TYPE_TR.get(typeFilter) + ")" : "";
-            return ChatbotResponse.of("Şu an için" + typeMsg + " yoğunluk verisi bulunamadı.");
-        }
-
-        Zone best = candidates.get(0);
-        float density = densityMap.getOrDefault(best.getZoneId(), 0f);
-        int pct = Math.round(density * 100);
-        DensityLevel level = DensityLevel.of(density);
-
-        String reply = String.format(
-                "Şu an en sakin bölge \uD83D\uDCCD %s (%s).\n" +
-                "Doluluk: %%%d — %s\n" +
-                "Rahatça bekleyebilirsiniz. 🌿",
-                best.getZoneName(),
-                TYPE_TR.getOrDefault(best.getType(), best.getType().name()),
-                pct,
-                DENSITY_TR.getOrDefault(level, level.name())
-        );
-
-        return ChatbotResponse.withZones(reply, List.of(best.getZoneName()));
-    }
-
-    private ChatbotResponse handleRecommendation(List<Zone> zones, Map<Long, Float> densityMap) {
-        List<Zone> sorted = zones.stream()
-                .filter(z -> densityMap.containsKey(z.getZoneId()))
+        List<ChatContext.ZoneInfo> quietZones = zones.stream()
+                .filter(z -> {
+                    Float d = densityMap.get(z.getZoneId());
+                    return d != null && d < 0.40f;
+                })
                 .sorted(Comparator.comparing(z -> densityMap.getOrDefault(z.getZoneId(), 1f)))
-                .limit(3)
+                .limit(5)
+                .map(z -> new ChatContext.ZoneInfo(
+                        z.getZoneName(),
+                        TYPE_TR.getOrDefault(z.getType(), z.getType().name()),
+                        Math.round(densityMap.get(z.getZoneId()) * 100)))
                 .toList();
 
-        if (sorted.isEmpty()) {
-            return ChatbotResponse.of("Şu an için yoğunluk verisi bulunamadı.");
-        }
-
-        StringBuilder sb = new StringBuilder("Size şu bölgeleri öneriyorum:\n\n");
-        List<String> names = new ArrayList<>();
-
-        for (int i = 0; i < sorted.size(); i++) {
-            Zone z = sorted.get(i);
-            float density = densityMap.getOrDefault(z.getZoneId(), 0f);
-            int pct = Math.round(density * 100);
-            DensityLevel level = DensityLevel.of(density);
-            sb.append(String.format("%d. %s — %%%d (%s)\n", i + 1,
-                    z.getZoneName(), pct, DENSITY_TR.getOrDefault(level, level.name())));
-            names.add(z.getZoneName());
-        }
-
-        sb.append("\nBu bölgeler şu an en az kalabalık.");
-        return ChatbotResponse.withZones(sb.toString(), names);
-    }
-
-    private ChatbotResponse handleZoneOccupancy(Zone zone, Map<Long, Float> densityMap) {
-        Float density = densityMap.get(zone.getZoneId());
-
-        if (density == null) {
-            return ChatbotResponse.of(
-                    zone.getZoneName() + " için anlık veri bulunamadı. " +
-                    "Sensörden henüz okuma gelmemiş olabilir."
-            );
-        }
-
-        int pct = Math.round(density * 100);
-        DensityLevel level = DensityLevel.of(density);
-        String levelTr = DENSITY_TR.getOrDefault(level, level.name());
-        String emoji = switch (level) {
-            case LOW      -> "🟢";
-            case MEDIUM   -> "🟡";
-            case HIGH     -> "🟠";
-            case CRITICAL -> "🔴";
-        };
-
-        String reply = String.format(
-                "%s %s şu an %s durumda.\n" +
-                "Doluluk oranı: %%%d\n" +
-                "Bölge tipi: %s",
-                emoji,
-                zone.getZoneName(),
-                levelTr.toLowerCase(),
-                pct,
-                TYPE_TR.getOrDefault(zone.getType(), zone.getType().name())
-        );
-
-        return ChatbotResponse.withZones(reply, List.of(zone.getZoneName()));
-    }
-
-    private ChatbotResponse handleSummary(List<Zone> zones, Map<Long, Float> densityMap) {
-        long total    = zones.size();
-        long withData = zones.stream().filter(z -> densityMap.containsKey(z.getZoneId())).count();
-        long empty    = zones.stream().filter(z -> {
-            Float d = densityMap.get(z.getZoneId());
-            return d != null && d < 0.30f;
-        }).count();
-        long moderate = zones.stream().filter(z -> {
-            Float d = densityMap.get(z.getZoneId());
-            return d != null && d >= 0.30f && d < 0.60f;
-        }).count();
-        long busy     = zones.stream().filter(z -> {
-            Float d = densityMap.get(z.getZoneId());
-            return d != null && d >= 0.60f && d < 0.85f;
-        }).count();
-        long critical = zones.stream().filter(z -> {
-            Float d = densityMap.get(z.getZoneId());
-            return d != null && d >= 0.85f;
-        }).count();
-
-        OptionalDouble avgOpt = zones.stream()
+        int avgPct = (int) zones.stream()
                 .filter(z -> densityMap.containsKey(z.getZoneId()))
                 .mapToDouble(z -> densityMap.get(z.getZoneId()))
-                .average();
-        int avgPct = avgOpt.isPresent() ? Math.round((float) avgOpt.getAsDouble() * 100) : 0;
+                .average()
+                .orElse(0.0) * 100;
 
-        String summary = String.format(
-                "📊 Terminal Anlık Durum (%d/%d bölgede veri var)\n\n" +
-                "🟢 Sakin: %d bölge\n" +
-                "🟡 Orta: %d bölge\n" +
-                "🟠 Yoğun: %d bölge\n" +
-                "🔴 Kritik: %d bölge\n\n" +
-                "Ortalama doluluk: %%%d",
-                withData, total, empty, moderate, busy, critical, avgPct
-        );
-
-        if (critical > 0) {
-            List<String> criticalZones = zones.stream()
-                    .filter(z -> {
-                        Float d = densityMap.get(z.getZoneId());
-                        return d != null && d >= 0.85f;
+        // Uçuş bilgileri
+        List<ChatContext.FlightInfo> flights = Collections.emptyList();
+        try {
+            flights = ticketRepository.findActiveTicketsWithFlight(userId).stream()
+                    .map(t -> {
+                        var f = t.getFlight();
+                        return new ChatContext.FlightInfo(
+                                f.getFlightCode(),
+                                f.getDestination(),
+                                f.getGate() != null ? f.getGate().getZoneName() : null,
+                                TIME_FMT.format(f.getDepartureTime()),
+                                statusTr(f.getStatus().name())
+                        );
                     })
-                    .map(Zone::getZoneName)
                     .toList();
-            summary += "\n\n⚠ Kritik bölgeler: " + String.join(", ", criticalZones);
-            return ChatbotResponse.withZones(summary, criticalZones);
+        } catch (Exception e) {
+            log.warn("Uçuş bilgisi çekilemedi: {}", e.getMessage());
         }
 
-        return ChatbotResponse.of(summary);
+        // Eco puan
+        Integer ecoPoints = null;
+        String tierLevel = "Üye";
+        try {
+            var wallet = walletRepository.findByUser_UserId(userId).orElse(null);
+            if (wallet != null) {
+                ecoPoints = wallet.getCurrentBalance();
+                tierLevel = wallet.getTierLevel() != null ? wallet.getTierLevel().name() : "GREEN";
+            }
+        } catch (Exception e) {
+            log.warn("Eco cüzdan bilgisi çekilemedi: {}", e.getMessage());
+        }
+
+        // Okunmamış bildirim sayısı
+        long unreadCount = 0L;
+        try {
+            unreadCount = notificationRepository.countByUser_UserIdAndIsReadFalse(userId);
+        } catch (Exception e) {
+            log.warn("Bildirim sayısı çekilemedi: {}", e.getMessage());
+        }
+
+        return new ChatContext(flights, ecoPoints, tierLevel, hotZones, quietZones, avgPct, now, unreadCount);
     }
 
-    // ── Yardımcı metodlar ────────────────────────────────────────────────────
-
-    /** Tüm aktif bölgelerin son yoğunluk okumalarını zone_id → density_pct map'i olarak döner. */
     private Map<Long, Float> buildDensityMap() {
-        return occupancyReadingRepository.findLatestPerZone()
+        return occupancyRepo.findLatestPerZone()
                 .stream()
                 .collect(Collectors.toMap(
                         r -> r.getZone().getZoneId(),
@@ -316,37 +214,11 @@ public class ChatbotService {
                 ));
     }
 
-    /** Mesajda zone adı geçiyor mu? İlk eşleşen zone'u döner. */
-    private Optional<Zone> findZoneInMessage(String normalizedMsg, List<Zone> zones) {
-        return zones.stream()
-                .filter(z -> {
-                    String name = z.getZoneName().toLowerCase(Locale.ROOT)
-                            .replace("ı", "i").replace("ö", "o")
-                            .replace("ü", "u").replace("ş", "s")
-                            .replace("ç", "c").replace("ğ", "g");
-                    return normalizedMsg.contains(name);
-                })
-                .findFirst();
+    private String resolveProviderName(String requested) {
+        if (requested == null || requested.isBlank()) return defaultProvider;
+        return requested.toLowerCase(Locale.ROOT).trim();
     }
 
-    /** Mesajdan ZoneType filtresi çıkar (lounge, kapı, güvenlik...). */
-    private ZoneType detectZoneTypeFilter(String lower) {
-        if (containsAny(lower, "lounge", "bekleme salonu", "salon")) return ZoneType.LOUNGE;
-        if (containsAny(lower, "kapi", "gate"))                        return ZoneType.GATE;
-        if (containsAny(lower, "guvenlik", "security"))                return ZoneType.SECURITY;
-        if (containsAny(lower, "checkin", "check-in", "check in"))     return ZoneType.CHECKIN;
-        return null;
-    }
-
-    /** keywords'lerden herhangi birini içeriyor mu? */
-    private boolean containsAny(String text, String... keywords) {
-        for (String kw : keywords) {
-            if (text.contains(kw)) return true;
-        }
-        return false;
-    }
-
-    /** Uçuş durumu enum adını Türkçeye çevirir. */
     private String statusTr(String status) {
         return switch (status) {
             case "SCHEDULED" -> "Planlandı";

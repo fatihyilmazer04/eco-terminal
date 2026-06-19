@@ -77,11 +77,17 @@ jwt:
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 cors:
-  allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:3000}
+  # Virgülle ayrılmış origin listesi. Glob pattern desteklenir (setAllowedOriginPatterns).
+  # http://192.168.*.*:* → LAN'daki herhangi bir cihazdan erişime izin verir (dev ortamı)
+  allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:3000,http://192.168.*.*:*}
 
 # ── AI Service ──────────────────────────────────────────────────────────────
 ai-service:
   base-url: ${AI_SERVICE_URL:http://localhost:5000}
+
+# ── YOLOv8 Service ──────────────────────────────────────────────────────────
+yolov8-service:
+  base-url: ${YOLO_SERVICE_URL:http://yolov8-service:5001}
 
 # ── Server ──────────────────────────────────────────────────────────────────
 server:
@@ -128,6 +134,27 @@ spring.task.scheduling:
 app:
   mail:
     enabled: ${MAIL_ENABLED:false}
+
+  # ── Internal Service Token ──────────────────────────────────────────────────
+  # llm-service bu token'ı X-Internal-Token header'ında gönderir.
+  # Üretimde güçlü bir random string kullanın (openssl rand -hex 32).
+  internal:
+    token: ${LLM_SERVICE_INTERNAL_TOKEN:default-dev-token}
+
+  # ── Demo Modu — Sabit Heatmap ───────────────────────────────────────────────
+  # true  → DemoOccupancyProvider sabit değerleri kullanılır, simülatör devre dışı
+  # false → Canlı DB okumaları kullanılır (Manuel görüntü analizi akışı)
+  demo:
+    fixed-heatmap: false
+
+  # ── Chatbot / LLM ──────────────────────────────────────────────────────────
+  chatbot:
+    default-provider: llm-service    # "cloud" | "local" | "llm-service"
+    gemini:
+      api-key: ${GEMINI_API_KEY:}    # Google AI Studio'dan alınan API anahtarı
+      model: gemini-pro              # gemini-pro | gemini-1.5-flash | gemini-2.0-flash
+    llm-service:
+      url: ${LLM_SERVICE_URL:http://llm-service:5002}  # FastAPI RAG servisi
 
 # ── Demo Veri Tazeleme ────────────────────────────────────────────────────────
 # false yapılınca DemoDataRefresher çalışmaz (production ortamı için)

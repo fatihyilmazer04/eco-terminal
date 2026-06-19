@@ -64,4 +64,21 @@ public class NotificationController {
         log.info("Admin manuel bildirim: userId={}, tür={}", request.userId(), request.type());
         return ResponseEntity.ok(ApiResponse.ok(notifService.sendManual(request)));
     }
+
+    /** DELETE /api/notifications/{id} — tek bildirimi sil */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteNotification(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+        notifService.deleteNotification(id, principal.getUserId());
+        return ResponseEntity.ok(ApiResponse.ok(null));
+    }
+
+    /** DELETE /api/notifications/clear-all — tüm bildirimleri sil */
+    @DeleteMapping("/clear-all")
+    public ResponseEntity<ApiResponse<Void>> clearAllNotifications(
+            @AuthenticationPrincipal UserPrincipal principal) {
+        notifService.deleteAllNotifications(principal.getUserId());
+        return ResponseEntity.ok(ApiResponse.ok(null));
+    }
 }

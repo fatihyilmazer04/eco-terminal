@@ -20,5 +20,7 @@ public record FlightDetailResponse(
         String colorCode,
         String seatNumber,
         String flightClass,
-        FlightStatus status
+        FlightStatus status,
+        String pnrCode,
+        Long ticketId
 ) {}

@@ -1,502 +1,321 @@
-# Eco-Terminal
+# 🛫 Eco-Terminal
 
-Akıllı Havalimanı Yoğunluk ve Enerji Yönetim Sistemi. Terminal içerisindeki bölgesel yolcu yoğunluğunu gerçek zamanlı analiz eder, enerji verimliliğini optimize eder, yolcuları düşük yoğunluklu rotalara yönlendirir ve LSTM tabanlı yapay zeka ile geleceğe yönelik yoğunluk tahminleri sunar.
+> **Yapay zeka destekli akıllı havalimanı yönetim sistemi**
+> Yolcu yoğunluğu tahmini, dinamik rota optimizasyonu ve doğal dil chatbot ile sürdürülebilir terminal deneyimi.
 
----
-
-## Mimari Diyagram
-
-```
-┌─────────────┐     ┌─────────────────────────────────────────┐
-│   Browser   │────▶│  Nginx (frontend:80)                    │
-│  React SPA  │     │  /api/* ──▶ backend:8080                │
-└─────────────┘     └─────────────────────────────────────────┘
-                              │
-                    ┌─────────▼─────────┐
-                    │  Spring Boot      │
-                    │  backend:8080     │◀── JWT Auth
-                    └────┬──────┬───────┘
-                         │      │
-             ┌───────────▼─┐  ┌─▼──────────────┐
-             │  PostgreSQL │  │  AI Service     │
-             │  :5432      │  │  Flask :5000    │
-             └─────────────┘  └────────────────┘
-                    │
-         ┌──────────▼──────────┐
-         │  Prometheus :9090   │──▶  Grafana :3001
-         └─────────────────────┘
-```
+[![Java](https://img.shields.io/badge/Java-21-orange)]()
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-green)]()
+[![React](https://img.shields.io/badge/React-18.3-blue)]()
+[![Python](https://img.shields.io/badge/Python-3.11-yellow)]()
+[![Docker](https://img.shields.io/badge/Docker-Compose-blue)]()
 
 ---
 
-## Teknoloji Yığını
+## 📋 İçindekiler
 
-| Katman       | Teknoloji                        |
-|-------------|----------------------------------|
-| Frontend     | React 18, Vite, Tailwind CSS, Recharts |
-| Backend      | Spring Boot 3.2.5, Java 21, JWT  |
-| Veritabanı   | PostgreSQL 15, Flyway migrations |
-| AI / ML      | Python, Flask, TensorFlow LSTM   |
-| Bildirimler  | Firebase Cloud Messaging (FCM)   |
-| Cache        | Redis 7                          |
-| Monitoring   | Prometheus + Grafana             |
-| CI/CD        | GitHub Actions                   |
-| Container    | Docker + Docker Compose          |
+- [Proje Özeti](#-proje-özeti)
+- [Temel Özellikler](#-temel-özellikler)
+- [Mimari](#-mimari)
+- [Teknoloji Stack](#-teknoloji-stack)
+- [Hızlı Başlangıç](#-hızlı-başlangıç)
+- [Kullanım Senaryoları](#-kullanım-senaryoları)
+- [Detaylı Dokümantasyon](#-detaylı-dokümantasyon)
+- [Test Kullanıcıları](#-test-kullanıcıları)
+- [Proje İstatistikleri](#-proje-istatistikleri)
 
 ---
 
-## Hızlı Başlangıç
+## 🎯 Proje Özeti
 
-```bash
-# 1. Repoyu klonla
-git clone <repo-url>
-cd eco-terminal
+Eco-Terminal, modern havalimanlarında yaşanan yoğunluk, enerji tüketimi ve yolcu yönlendirme sorunlarına çözüm getiren bir uygulamadır. Sistem **gerçek zamanlı yoğunluk verilerini**, **AI tahminlerini** ve **doğal dil arayüzünü** birleştirerek yolculara akıllı rotalar önerir ve havalimanı yönetimine analitik gösterge paneli sunar.
 
-# 2. Ortam değişkenlerini ayarla
-cp .env.example .env
-# .env dosyasını açıp POSTGRES_PASSWORD ve JWT_SECRET'i güncelle
+Proje kapsamında **kendi LLM modelimiz** (DistilBERT fine-tuning) eğitilmiş, **RAG (Retrieval-Augmented Generation)** pipeline'ı kurulmuş ve **Dijkstra algoritması** ile dinamik rota hesaplama gerçekleştirilmiştir.
 
-# 3. Tüm servisleri başlat
-docker-compose up --build
+## ✨ Temel Özellikler
 
-# 4. Uygulamayı aç
-# Frontend:   http://localhost
-# Backend:    http://localhost/api/actuator/health
-# Swagger:    http://localhost/api/swagger-ui.html
-# Prometheus: http://localhost:9090
-# Grafana:    http://localhost:3001  (admin / admin123)
-```
+### 🗺️ Akıllı Rota Önerisi
+- 15 zone, 52 edge'li havalimanı graf yapısı
+- Dijkstra algoritması ile en kısa yol hesaplama
+- 3 farklı strateji: en kısa süre, en az kalabalık, dengeli
+- Yoğunluk verisine göre dinamik edge weight ayarlama
 
----
+### 🤖 Yapay Zeka Destekli Chatbot
+- **DistilBERT fine-tuning** (kendi modelimiz, %85.9 accuracy)
+- **Hibrit sınıflandırma** (DistilBERT + Rule-based fallback)
+- **RAG pipeline** (Knowledge base + Dijkstra + Gemini API)
+- 6 intent: rota, uçuş, yoğunluk, sadakat, genel bilgi, bilinmeyen
 
-## Test Kullanıcıları
+### 📊 Yoğunluk Tahmini
+- XGBoost ile zone bazlı density forecasting
+- 1 saat, 1 hafta, 1 ay ileriye tahmin
+- LSTM fallback modeli
+- 5 dakikalık otomatik refresh
 
-| Rol    | E-posta                       | Şifre    |
-|--------|-------------------------------|----------|
-| Admin  | admin@ecoterminal.com         | admin123 |
-| Yolcu  | passenger@ecoterminal.com     | pass123  |
-| Yolcu  | alice@ecoterminal.com         | pass123  |
-| Yolcu  | bob@ecoterminal.com           | pass123  |
+### 🎨 Görsel Heatmap
+- SVG tabanlı interaktif terminal haritası
+- Gerçek zamanlı yoğunluk gösterimi
+- Chatbot rotalarının harita üzerinde animasyonlu render'ı
+- Adım adım yolcu yönlendirme
 
----
+### 💎 Eco-Cüzdan & Sadakat
+- 4 seviyeli tier sistemi (Bronze, Silver, Gold, Platinum)
+- Eco-dostu rota tamamlayınca puan kazanma
+- Ödül kataloğu ve harcama akışı
 
-## API Dokümantasyonu
+### 🔔 Bildirimler
+- Firebase Cloud Messaging entegrasyonu
+- Yoğunluk eşik aşımında otomatik bildirim
+- Admin tarafından manuel bildirim gönderimi
 
-Uygulama çalışırken Swagger UI'a erişilebilir:
-
-```
-http://localhost/api/swagger-ui.html
-http://localhost/api/api-docs          (OpenAPI JSON)
-```
-
----
-
-## Test Çalıştırma
-
-### Backend (JUnit 5 + Testcontainers)
-
-```bash
-cd backend
-
-# Tüm testler (Docker gerekli — Testcontainers PostgreSQL başlatır)
-mvn test
-
-# Sadece unit testler (hızlı)
-mvn test -Dgroups="unit"
-
-# Test raporu
-target/surefire-reports/
-```
-
-### Frontend (Vitest)
-
-```bash
-cd frontend
-
-# Tek seferlik çalıştır
-npm run test
-
-# Watch modu
-npm run test:watch
-```
+### 🛡️ Güvenlik
+- JWT tabanlı kimlik doğrulama
+- Internal service-to-service token (LLM ↔ Backend)
+- Rate limiting (Bucket4j + Redis)
+- BCrypt password hashing
 
 ---
 
-## Proje Yapısı
+## 🏗️ Mimari
 
 ```
-eco-terminal/
-├── backend/                    # Spring Boot uygulaması
-│   ├── src/main/java/com/ecoterminal/
-│   │   ├── config/             # Security, Firebase, CORS
-│   │   ├── controller/         # REST API endpoint'leri
-│   │   ├── model/
-│   │   │   ├── entity/         # JPA entity'leri
-│   │   │   └── dto/            # Request/Response DTO'ları
-│   │   ├── repository/         # Spring Data JPA repository'leri
-│   │   ├── security/           # JWT, UserDetails
-│   │   └── service/            # İş mantığı
-│   └── src/test/               # Unit + Integration testler
-│
-├── frontend/                   # React uygulaması
-│   ├── src/
-│   │   ├── api/                # Axios API çağrıları
-│   │   ├── components/         # Yeniden kullanılabilir bileşenler
-│   │   ├── context/            # AuthContext
-│   │   ├── hooks/              # Custom hook'lar
-│   │   └── pages/              # Sayfa bileşenleri
-│   └── src/components/__tests__/  # Vitest testler
-│
-├── ai-service/                 # Python Flask + LSTM tahmin servisi
-├── monitoring/                 # Prometheus konfigürasyonu
-├── docker-compose.yml          # Tüm servisler
-├── .env.example                # Ortam değişkeni şablonu
-└── .github/workflows/ci.yml    # GitHub Actions CI pipeline
+┌─────────────────────────────────────────────────────────────┐
+│  Frontend (React 18 + Vite + Tailwind)                      │
+│  - ChatbotWidget, AirportHeatmap, Dashboard                 │
+└──────────────────────────────┬──────────────────────────────┘
+                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Backend (Spring Boot 3.2 + Java 21)                        │
+│  - JWT Auth, Dijkstra Engine, Chatbot Provider Chain        │
+│  - 18 Controller, 34 Service, 30 Entity                     │
+└──┬─────────────────┬────────────────────────┬───────────────┘
+   ▼                 ▼                        ▼
+┌──────┐    ┌─────────────────┐    ┌────────────────────────┐
+│Redis │    │ PostgreSQL 15   │    │  llm-service (FastAPI) │
+│      │    │ Flyway, 25 mig  │    │  - Hybrid Classifier   │
+│Cache │    │ 15 zones        │    │  - DistilBERT (kendi)  │
+│      │    │ 52 edges        │    │  - RAG + Gemini API    │
+└──────┘    └─────────────────┘    └─────┬──────────────────┘
+                                          │
+                          ┌───────────────┼───────────────┐
+                          ▼               ▼               ▼
+                  ┌──────────────┐  ┌──────────┐  ┌──────────────┐
+                  │ ai-service   │  │ Knowledge│  │  Gemini API  │
+                  │ XGBoost      │  │   Base   │  │  2.0 Flash   │
+                  │ LSTM         │  │  10 fact │  │  (external)  │
+                  └──────────────┘  └──────────┘  └──────────────┘
 ```
+
+**Detaylı mimari için:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ---
 
-## YOLOv8 Kalabalık Tespiti & Yapay Dataset
+## 🛠️ Teknoloji Stack
 
-### Yapay veri üretme
+### Backend
+| Katman | Teknoloji |
+|--------|-----------|
+| Runtime | Java 21, Spring Boot 3.2.5 |
+| Build | Maven 3.9.6 |
+| ORM | Spring Data JPA + Hibernate |
+| Veritabanı | PostgreSQL 15 + Flyway |
+| Auth | JWT (jjwt 0.12.5), BCrypt strength=12 |
+| Cache | Redis 7 |
+| Rate Limiting | Bucket4j 8.10.1 |
+| Push | Firebase Admin SDK 9.2.0 |
+| Monitoring | Micrometer + Prometheus |
+| Test | JUnit 5, Mockito, Testcontainers |
 
-```bash
-# PostgreSQL çalışıyor olmalı (docker compose up postgres)
-# Proje kökünde:
-pip install psycopg2-binary numpy python-dotenv
+### Frontend
+| Katman | Teknoloji |
+|--------|-----------|
+| UI | React 18.3.1 |
+| Build | Vite 5.3.1 |
+| Styling | Tailwind CSS 3.4.4 |
+| HTTP | Axios 1.7.2 |
+| Routing | React Router DOM 6.23.1 |
+| Grafik | Recharts 2.12.7 |
+| Toast | react-hot-toast 2.4.1 |
+| Test | Vitest + Testing Library |
 
-python scripts/generate_dataset.py --days 30 --zone-count 15
-```
+### LLM Service (Mikro Servis)
+| Katman | Teknoloji |
+|--------|-----------|
+| Framework | Python 3.11 + FastAPI |
+| ML | PyTorch 2.3 + Transformers 4.40 |
+| Model | DistilBERT (multilingual, fine-tuned) |
+| LLM API | Google Gemini 2.0 Flash |
+| HTTP Client | httpx (async) |
+| Server | Uvicorn + Gunicorn |
 
-Çıktı: Eklenen kayıt sayısı, zone bazlı ortalama doluluk, en yoğun zone.
+### Veri & Tahmin
+| Katman | Teknoloji |
+|--------|-----------|
+| Yoğunluk Tahmini | XGBoost 2.0+, scikit-learn 1.3 |
+| LSTM Fallback | TensorFlow 2.15 |
+| CV (Kalabalık) | YOLOv8n (Ultralytics) |
+| Feature Eng | Pandas, NumPy |
 
-### YOLOv8 Servisi (port 5001)
-
-```bash
-# Docker ile (tüm servislerle birlikte)
-docker compose up --build yolov8-service
-
-# Manuel test
-curl http://localhost:5001/health
-
-# Tüm zone'lar için anlık detection (sentetik frame)
-curl -X POST http://localhost:5001/detect/batch
-
-# Tekil zone detection (gerçek görüntü yoksa sentetik)
-curl -X POST http://localhost:5001/detect \
-  -H "Content-Type: application/json" \
-  -d '{"zone_id": 1}'
-```
-
-### Kalabalık Analiz Endpoint'leri
-
-```bash
-# Token ile (admin veya user)
-TOKEN="Bearer <jwt_token>"
-
-# Tüm zone'ların anlık durumu (Spring Boot)
-curl -H "Authorization: $TOKEN" http://localhost:8080/api/crowd/status
-
-# Flask AI kalabalık analizi (Spring Boot proxy)
-curl -H "Authorization: $TOKEN" http://localhost:8080/api/ai/crowd-analysis
-
-# Flask'a doğrudan (auth gerekmez)
-curl http://localhost:5000/analyze/crowd
-```
-
-### Admin UI — Kalabalık İzleme
-
-`http://localhost:3000` → Admin girişi → **Kalabalık İzleme** (sidebar)
-
----
-
-## Monitoring — Grafana & Loki
-
-### Erişim Adresleri
-
-| Servis     | URL                       | Kullanıcı / Şifre     |
-|-----------|---------------------------|----------------------|
-| Grafana    | http://localhost:3001     | admin / admin123     |
-| Prometheus | http://localhost:9090     | —                    |
-| Loki       | http://localhost:3100     | —                    |
-
-### Otomatik Provisioning
-
-`docker-compose up` sonrası Grafana **otomatik olarak** şunlarla gelir — elle yapılandırma gerekmez:
-
-| Kaynak        | Detay                                                      |
-|--------------|-----------------------------------------------------------|
-| Datasource   | Prometheus (`http://prometheus:9090`, varsayılan)          |
-| Datasource   | Loki (`http://loki:3100`)                                  |
-| Dashboard    | **Eco-Terminal — Backend Metrikleri** (Spring Boot / JVM)  |
-| Dashboard    | **Eco-Terminal — Container Logları** (Loki log akışı)      |
-
-### Mevcut Dashboard Panelleri
-
-**Backend Metrikleri (`eco-terminal.json`)**
-
-| Panel | Metrik |
-|-------|--------|
-| Toplam İstek / dk | `http_server_requests_seconds_count` |
-| Hata Oranı (5xx) | Durum kodu filtrelenmiş istek oranı |
-| Aktif DB Bağlantısı | `hikaricp_connections_active` |
-| JVM Heap Kullanımı | `jvm_memory_used_bytes{area="heap"}` |
-| JVM Bellek Trendi | Heap / non-heap / max MB zaman serisi |
-| HTTP İstek Oranı | 2xx / 4xx / 5xx req/s |
-| Yanıt Süresi (p50/p95/p99) | `http_server_requests_seconds_bucket` histogramı |
-| HikariCP Havuzu | Aktif / boşta / bekleyen / max bağlantı |
-| Top-10 Endpoint | URI bazında istek hacmi (bar gauge) |
-| 4xx & 5xx Hata % | Toplam isteğe oranla hata yüzdesi |
-| JVM Thread / GC / CPU | Thread sayısı, GC süresi, process CPU |
-
-**Container Logları (`eco-logs.json`)**
-
-| Panel | İçerik |
-|-------|--------|
-| Toplam Log / Hata / Uyarı | 1 saatlik istatistikler |
-| Servis Log Hacmi | Container başına dakikadaki satır sayısı |
-| Backend Logları | `eco-backend` container stream |
-| AI Servisi Logları | `eco-ai-service` container stream |
-| YOLOv8 Logları | `eco-yolov8` container stream |
-| Tüm Hatalar | Tüm container'lardan `ERROR` filtresi |
-
-### Log Toplama Mimarisi
-
-```
-Container stdout/stderr
-    │
-    ▼ (Docker log driver → /var/lib/docker/containers/)
-Promtail
-  • Docker SD (socket) ile container'ları keşfeder
-  • compose_project / container_name / level label'ları ekler
-    │
-    ▼ push
-Loki :3100  →  Grafana :3001
-```
-
-### Sık Kullanılan PromQL Sorguları
-
-```promql
-# Son 5 dk ortalama yanıt süresi (ms)
-sum(rate(http_server_requests_seconds_sum{job="eco-terminal-backend"}[5m]))
-/ sum(rate(http_server_requests_seconds_count{job="eco-terminal-backend"}[5m])) * 1000
-
-# p95 yanıt süresi
-histogram_quantile(0.95,
-  sum by (le) (rate(http_server_requests_seconds_bucket{job="eco-terminal-backend"}[5m]))
-) * 1000
-
-# Endpoint bazında hata oranı
-sum by (uri) (rate(http_server_requests_seconds_count{status=~"5..",job="eco-terminal-backend"}[5m]))
-
-# Heap doluluk yüzdesi
-100 * sum(jvm_memory_used_bytes{area="heap"}) / sum(jvm_memory_max_bytes{area="heap"})
-```
-
-### Sık Kullanılan LogQL Sorguları
-
-```logql
-# Backend'deki tüm hatalar
-{container_name="eco-backend"} |= "ERROR"
-
-# Belirli exception'ları filtrele
-{container_name="eco-backend"} |= "Exception" | json | line_format "{{.log}}"
-
-# Son 5 dk'da tüm servislerin hata oranı
-sum(rate({compose_project="eco-terminal"} |= "ERROR" [5m])) by (container_name)
-```
+### Altyapı
+| Katman | Teknoloji |
+|--------|-----------|
+| Container | Docker + Docker Compose (11 servis) |
+| Orchestration | Kubernetes (11 manifest hazır) |
+| CI/CD | GitHub Actions |
+| Logging | Loki + Promtail + Grafana |
+| Metrics | Prometheus + Spring Actuator |
 
 ---
 
-## Kubernetes ile Çalıştırma
-
-`k8s/` klasöründeki manifest'ler minikube veya kind ile lokal olarak test edilebilir.
-Mevcut `docker-compose.yml` korunmaktadır — K8s manifest'leri onun yanına eklenmiştir.
+## 🚀 Hızlı Başlangıç
 
 ### Gereksinimler
 
-- [minikube](https://minikube.sigs.k8s.io/) veya [kind](https://kind.sigs.k8s.io/)
-- [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- Docker
+- Docker Desktop 4.x+ (en az 8 GB RAM ayrılmış)
+- Git
+- (Opsiyonel) Google Gemini API key — [Google AI Studio](https://aistudio.google.com)'dan ücretsiz alabilirsiniz
 
-### minikube ile Hızlı Başlangıç
-
-```bash
-# 1. Cluster başlat
-minikube start --cpus=4 --memory=6g
-
-# 2. Ingress controller etkinleştir
-minikube addons enable ingress
-
-# 3. Minikube'un Docker ortamını kullan (lokal image build için)
-eval $(minikube docker-env)
-
-# 4. Image'ları derle (minikube'un Docker daemon'ına)
-docker build -t eco-terminal-backend:latest ./backend
-docker build -t eco-terminal-frontend:latest ./frontend
-docker build -t eco-terminal-ai:latest ./ai-service
-docker build -t eco-terminal-yolov8:latest ./yolov8-service
-
-# 5. Secret dosyasını üretim için özelleştir
-# k8s/secret.yaml içindeki varsayılan değerleri değiştirin:
-#   echo -n "gercek-sifreniz" | base64
-
-# 6. Tüm manifest'leri uygula (sıralı: önce config, sonra infra, sonra app)
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/secret.yaml
-kubectl apply -f k8s/postgres.yaml
-kubectl apply -f k8s/redis.yaml
-kubectl apply -f k8s/ai-service.yaml
-kubectl apply -f k8s/yolov8-service.yaml
-kubectl apply -f k8s/backend.yaml
-kubectl apply -f k8s/frontend.yaml
-kubectl apply -f k8s/prometheus.yaml
-kubectl apply -f k8s/grafana.yaml
-kubectl apply -f k8s/ingress.yaml
-
-# Ya da tek komutla (sıra garantisi olmadan):
-kubectl apply -f k8s/
-```
-
-### kind ile Hızlı Başlangıç
+### Kurulum
 
 ```bash
-# 1. Cluster oluştur
-kind create cluster --name eco-terminal
+# 1. Repoyu klonlayın
+git clone <repo-url>
+cd eco-terminal
 
-# 2. Ingress controller yükle
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
-kubectl wait --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=90s
+# 2. Environment dosyasını oluşturun
+cp .env.example .env
 
-# 3. Image'ları kind cluster'ına yükle
-docker build -t eco-terminal-backend:latest ./backend
-docker build -t eco-terminal-frontend:latest ./frontend
-docker build -t eco-terminal-ai:latest ./ai-service
-docker build -t eco-terminal-yolov8:latest ./yolov8-service
-kind load docker-image eco-terminal-backend:latest --name eco-terminal
-kind load docker-image eco-terminal-frontend:latest --name eco-terminal
-kind load docker-image eco-terminal-ai:latest --name eco-terminal
-kind load docker-image eco-terminal-yolov8:latest --name eco-terminal
+# 3. Gemini API key'i .env dosyasına ekleyin
+# GEMINI_API_KEY=AIzaSy...
 
-# 4. Manifest'leri uygula
-kubectl apply -f k8s/
+# 4. Tüm servisleri başlatın
+docker-compose up -d
+
+# 5. Servislerin hazır olmasını bekleyin (~60 saniye)
+docker-compose ps
 ```
 
-### Servislere Erişim
+### Erişim Noktaları
 
-#### minikube
+| Servis | URL |
+|--------|-----|
+| 🌐 Frontend | http://localhost:3000 |
+| ⚙️ Backend API | http://localhost:8080/api |
+| 📚 Swagger UI | http://localhost:8080/swagger-ui.html |
+| 🤖 LLM Service | http://localhost:5002 |
+| 🤖 LLM Service Docs | http://localhost:5002/docs |
+| 📊 Grafana | http://localhost:3001 (admin/admin123) |
+| 📈 Prometheus | http://localhost:9090 |
+
+### İlk Test
 
 ```bash
-# Ingress IP'sini öğren
-minikube ip
-# Çıktı örneği: 192.168.49.2
+# Login
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"passenger@ecoterminal.com","password":"pass123"}'
 
-# Frontend (React SPA)
-open http://$(minikube ip)/
-
-# Backend API
-open http://$(minikube ip)/api/actuator/health
-
-# Swagger UI
-open http://$(minikube ip)/swagger-ui.html
+# Chatbot test (token'ı yukarıdan alın)
+curl -X POST http://localhost:8080/api/chatbot/ask \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"A1 kapısına nasıl giderim?"}'
 ```
-
-#### Port-Forward (minikube ve kind için)
-
-```bash
-# Prometheus (NodePort 30090 veya port-forward)
-kubectl port-forward svc/prometheus 9090:9090
-# → http://localhost:9090
-
-# Grafana (NodePort 30301 veya port-forward)
-kubectl port-forward svc/grafana 3001:3001
-# → http://localhost:3001  (admin / admin123)
-
-# Backend doğrudan (Ingress'i bypass et)
-kubectl port-forward svc/backend 8080:8080
-```
-
-### Durum Kontrolü
-
-```bash
-# Tüm pod'ların durumu
-kubectl get pods
-
-# Servisler
-kubectl get services
-
-# Ingress
-kubectl get ingress
-
-# Pod logları
-kubectl logs -f deployment/backend
-kubectl logs -f deployment/ai-service
-
-# Pod başlatma sorunlarını incele
-kubectl describe pod <pod-adı>
-```
-
-### Ölçeklendirme
-
-```bash
-# Backend'i 3 replica'ya çıkar
-kubectl scale deployment backend --replicas=3
-
-# Frontend'i 2'ye çıkar
-kubectl scale deployment frontend --replicas=2
-```
-
-### Temizlik
-
-```bash
-# Tüm kaynakları sil
-kubectl delete -f k8s/
-
-# Minikube cluster'ı sil
-minikube delete
-
-# Kind cluster'ı sil
-kind delete cluster --name eco-terminal
-```
-
-### k8s/ Klasör Yapısı
-
-```
-k8s/
-├── configmap.yaml        # Env değişkenleri + Prometheus config
-├── secret.yaml           # JWT secret, DB şifresi (git'e commit etme!)
-├── postgres.yaml         # PVC + Deployment + Service
-├── redis.yaml            # PVC + Deployment + Service
-├── backend.yaml          # Spring Boot (liveness/readiness: /actuator/health)
-├── frontend.yaml         # React/Nginx SPA
-├── ai-service.yaml       # Flask LSTM tahmin servisi
-├── yolov8-service.yaml   # YOLOv8 kalabalık tespit servisi
-├── prometheus.yaml       # Prometheus + ConfigMap mount (NodePort: 30090)
-├── grafana.yaml          # Grafana (NodePort: 30301)
-└── ingress.yaml          # Nginx Ingress: /api → backend, / → frontend
-```
-
-> **Not:** `k8s/secret.yaml` dosyasını `.gitignore`'a ekleyin.
-> Gerçek üretim ortamında [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets)
-> veya HashiCorp Vault gibi bir secret yönetim aracı kullanın.
 
 ---
 
-## Faz Geliştirme Özeti
+## 💡 Kullanım Senaryoları
 
-| Faz | Kapsam                                    | Durum |
-|-----|------------------------------------------|-------|
-| 0   | Proje kurulumu, DB şeması, temel yapı    | ✅    |
-| 1   | JWT Auth (login, register, refresh)      | ✅    |
-| 2   | Yoğunluk yönetimi, heatmap, sensör API   | ✅    |
-| 3   | Enerji yönetimi, tasarruf önerileri      | ✅    |
-| 4   | AI tahmin servisi (LSTM), admin dashboard | ✅    |
-| 5   | AI frontend (PredictionCard, RiskBadge)  | ✅    |
-| 6   | Bildirim sistemi (FCM, rate limiter)     | ✅    |
-| 7   | Loyalty sistemi, profil, bekleme alanları | ✅    |
-| 8   | Testler, Docker final, CI/CD             | ✅    |
-| 9   | YOLOv8 tespiti, yapay dataset, AI analiz | ✅    |
-| 10  | Grafana otomatik provisioning, Loki log toplama | ✅  |
+### Senaryo 1: Yolcu Rota Sorgusu
+
+```
+Kullanıcı: "A12 kapısına en kalabalıksız yoldan nasıl giderim?"
+
+Sistem:
+  1. DistilBERT → intent: route_request (%91 güven)
+  2. Entity extraction → destination: Gate A12, preference: least_crowded
+  3. Knowledge Base → A konkursu bilgileri çekilir
+  4. Backend Dijkstra → 3 alternatif rota hesaplanır
+  5. Gemini → Türkçe doğal dil cevap üretir
+  6. Frontend → Rota kartı + "Haritada Göster" butonu
+  7. Heatmap → Animasyonlu rota çizimi + adım adım yönlendirme
+```
+
+### Senaryo 2: Yoğunluk Sorgulama
+
+```
+Kullanıcı: "Security şu an yoğun mu?"
+
+Sistem:
+  1. DistilBERT → intent: crowd_query
+  2. Backend /api/heatmap/live → tüm zone durumları
+  3. Gemini → "Security-1 %75 dolu, Security-2 %35 dolu. Security-2 öneriyorum."
+```
+
+### Senaryo 3: Sadakat Programı
+
+```
+Kullanıcı: "Eco puanlarımı görmek istiyorum"
+
+Sistem:
+  1. DistilBERT → intent: loyalty_query (%85 güven)
+  2. Knowledge Base → loyalty programı bilgisi
+  3. Gemini → Kullanıcının seviyesi + ödül önerileri
+```
+
+---
+
+## 📚 Detaylı Dokümantasyon
+
+| Dokuman | Açıklama |
+|---------|----------|
+| [📐 ARCHITECTURE.md](docs/ARCHITECTURE.md) | Sistem mimarisi, servisler, veri akışı |
+| [🔌 API.md](docs/API.md) | REST API endpoint referansı |
+| [🧠 LLM_PIPELINE.md](docs/LLM_PIPELINE.md) | DistilBERT fine-tuning, RAG, hibrit sınıflandırma |
+| [🚢 DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker, K8s, üretim deployment'ı |
+| [🧪 TESTING.md](docs/TESTING.md) | Test stratejisi, sonuçlar, metrikler |
+
+---
+
+## 👥 Test Kullanıcıları
+
+| E-posta | Şifre | Rol | Kullanım |
+|---------|-------|-----|----------|
+| admin@ecoterminal.com | admin123 | ADMIN | Yönetim paneli, raporlar |
+| passenger@ecoterminal.com | pass123 | USER | Yolcu deneyimi |
+| alice@ecoterminal.com | pass123 | USER | Test 1 |
+| bob@ecoterminal.com | pass123 | USER | Test 2 |
+
+---
+
+## 📊 Proje İstatistikleri
+
+| Metrik | Değer |
+|--------|-------|
+| Toplam kod satırı | ~35.000+ |
+| Toplam dosya | ~400+ |
+| Docker servisi | 11 |
+| REST endpoint | 74 |
+| Veritabanı migration | 25 |
+| Veritabanı entity | 30 |
+| Backend test | 8 sınıf |
+| LLM eğitim dataset | 422 etiketli cümle |
+| LLM test accuracy | %85.9 |
+| Zone graf node | 15 |
+| Zone graf edge | 52 (bidirectional) |
+| Knowledge base fact | 10 |
+| Geliştirme süresi | ~3 ay |
+
+---
+
+## 📝 Lisans
+
+Bu proje bir bitirme tezi kapsamında hazırlanmıştır. Akademik kullanım için açıktır.
+
+---
+
+## 🙏 Teşekkürler
+
+- **DistilBERT**: HuggingFace Transformers ekibine
+- **Gemini API**: Google AI ekibine
+- **Hands-On Large Language Models**: Jay Alammar & Maarten Grootendorst kitabına
+- **Anthropic Claude**: Geliştirme sürecindeki kod desteği için

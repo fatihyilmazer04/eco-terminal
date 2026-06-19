@@ -19,18 +19,17 @@ const TABS = [
   { key: 'REWARD',       label: 'Ödül'      },
 ]
 
-function NotifCard({ notif, onMarkRead }) {
+function NotifCard({ notif, onMarkRead, onDelete }) {
   const cfg = TYPE_CONFIG[notif.type] ?? TYPE_CONFIG.SYSTEM
   const isUnread = !notif.isRead
 
   return (
-    <button
-      onClick={() => isUnread && onMarkRead(notif.notifId)}
+    <div
       className={`
-        w-full text-left rounded-xl border p-4
+        relative rounded-xl border p-4
         flex items-start gap-3 transition-all group
         ${isUnread
-          ? 'bg-gray-800 border-gray-700 border-l-4 hover:bg-gray-750'
+          ? 'bg-gray-800 border-gray-700 border-l-4'
           : 'bg-gray-900/60 border-gray-800/60 opacity-60 hover:opacity-80'}
       `}
       style={isUnread ? { borderLeftColor: cfg.color } : undefined}
@@ -43,8 +42,11 @@ function NotifCard({ notif, onMarkRead }) {
         {cfg.icon}
       </div>
 
-      {/* İçerik */}
-      <div className="flex-1 min-w-0">
+      {/* İçerik — tıklayınca okundu işaretle */}
+      <button
+        onClick={() => isUnread && onMarkRead(notif.notifId)}
+        className="flex-1 min-w-0 text-left"
+      >
         <div className="flex items-start justify-between gap-2">
           <p className={`text-sm font-semibold leading-tight ${isUnread ? 'text-white' : 'text-gray-400'}`}>
             {notif.title}
@@ -61,27 +63,24 @@ function NotifCard({ notif, onMarkRead }) {
         )}
 
         <div className="flex items-center gap-2 mt-1.5">
-          {/* Tip etiketi */}
           <span
             className="text-[10px] px-1.5 py-0.5 rounded font-medium"
             style={{ color: cfg.color, backgroundColor: cfg.color + '15' }}
           >
             {cfg.label}
           </span>
-          {/* Zone etiketi */}
           {notif.zoneName && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-700 text-gray-400">
               {notif.zoneName}
             </span>
           )}
-          {/* Okundu ipucu */}
           {isUnread && (
             <span className="text-[10px] text-gray-600 group-hover:text-gray-400 transition-colors ml-auto">
               Okundu işaretle →
             </span>
           )}
         </div>
-      </div>
+      </button>
 
       {/* Okunmamış nokta */}
       {isUnread && (
@@ -90,12 +89,23 @@ function NotifCard({ notif, onMarkRead }) {
           style={{ backgroundColor: cfg.color }}
         />
       )}
-    </button>
+
+      {/* Sil butonu — hover'da belirgin */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(notif.notifId) }}
+        className="absolute top-2 right-2 w-6 h-6 rounded-full flex items-center justify-center
+                   text-gray-600 hover:text-red-400 hover:bg-red-500/10
+                   opacity-0 group-hover:opacity-100 transition-all"
+        title="Bildirimi sil"
+      >
+        ✕
+      </button>
+    </div>
   )
 }
 
 export default function NotificationsPage() {
-  const { notifications, unreadCount, loading, error, markAsRead, markAllAsRead } = useNotifications()
+  const { notifications, unreadCount, loading, error, markAsRead, markAllAsRead, deleteOne, clearAll } = useNotifications()
   const [activeTab, setActiveTab] = useState('ALL')
 
   const filtered = notifications.filter(n => {
@@ -138,19 +148,33 @@ export default function NotificationsPage() {
                 : 'Tüm bildirimler okundu'}
             </p>
           </div>
-          {unreadCount > 0 && (
-            <button
-              onClick={markAllAsRead}
-              className="px-3 py-1.5 rounded-lg bg-eco-green/10 border border-eco-green/30
-                         text-eco-green text-sm font-medium hover:bg-eco-green/20 transition-colors
-                         flex items-center gap-1.5"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              Tümünü Okundu İşaretle
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {unreadCount > 0 && (
+              <button
+                onClick={markAllAsRead}
+                className="px-3 py-1.5 rounded-lg bg-eco-green/10 border border-eco-green/30
+                           text-eco-green text-sm font-medium hover:bg-eco-green/20 transition-colors
+                           flex items-center gap-1.5"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Tümünü Okundu İşaretle
+              </button>
+            )}
+            {notifications.length > 0 && (
+              <button
+                onClick={() => {
+                  if (window.confirm('Tüm bildirimleri silmek istiyor musunuz?')) clearAll()
+                }}
+                className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20
+                           text-red-400 text-sm font-medium hover:bg-red-500/20 transition-colors
+                           flex items-center gap-1.5"
+              >
+                🗑️ Tümünü Temizle
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Hata mesajı */}
@@ -216,6 +240,7 @@ export default function NotificationsPage() {
                   key={notif.notifId}
                   notif={notif}
                   onMarkRead={markAsRead}
+                  onDelete={deleteOne}
                 />
               ))}
             </div>

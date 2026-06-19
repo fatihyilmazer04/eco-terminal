@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface TicketRepository extends JpaRepository<Ticket, Long> {
@@ -43,4 +44,29 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
               AND t.isActive = true
             """)
     List<Ticket> findActiveTicketsByGateZoneId(@Param("zoneId") Long zoneId);
+
+    /** PNR kodu ile bilet bul */
+    Optional<Ticket> findByPnrCode(String pnrCode);
+
+    /** PNR kodu ile bilet + ilişkili tablolar (uçuş, havayolu, kapı, kullanıcı) */
+    @Query("""
+            SELECT t FROM Ticket t
+            JOIN FETCH t.flight f
+            LEFT JOIN FETCH f.airline
+            LEFT JOIN FETCH f.gate
+            LEFT JOIN FETCH t.user
+            WHERE t.pnrCode = :pnrCode
+            """)
+    Optional<Ticket> findByPnrCodeWithDetails(@Param("pnrCode") String pnrCode);
+
+    /** Admin: tüm biletler + ilişkili tablolar */
+    @Query("""
+            SELECT t FROM Ticket t
+            LEFT JOIN FETCH t.flight f
+            LEFT JOIN FETCH f.airline
+            LEFT JOIN FETCH f.gate
+            LEFT JOIN FETCH t.user
+            ORDER BY t.ticketId ASC
+            """)
+    List<Ticket> findAllWithDetails();
 }

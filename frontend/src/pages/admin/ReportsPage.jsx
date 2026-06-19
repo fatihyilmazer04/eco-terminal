@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  AreaChart, Area, BarChart, Bar,
-  LineChart, Line,
-  PieChart, Pie, Cell, Legend,
+  BarChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
 } from 'recharts'
@@ -19,7 +17,6 @@ const TABS = [
   { key: 'occupancy', label: 'Yoğunluk', color: '#2ECC71', unit: '%',   icon: '👥' },
   { key: 'energy',    label: 'Enerji',    color: '#F39C12', unit: 'kWh', icon: '⚡' },
   { key: 'users',     label: 'Kullanıcı', color: '#3B82F6', unit: '',    icon: '👤' },
-  { key: 'ai',        label: 'AI Özet',   color: '#8B5CF6', unit: '',    icon: '🔮' },
 ]
 
 /** range key → { startDate, endDate } YYYY-MM-DD strings */
@@ -123,7 +120,6 @@ const TAB_KEYS = {
   occupancy: 'yogunluk',
   energy:    'enerji',
   users:     'kullanici',
-  ai:        'ai-ozet',
 }
 
 /**
@@ -426,371 +422,12 @@ function UsersTab({ range }) {
 
 // ── AI Özet Sekmesi ───────────────────────────────────────────────────────────
 
-const RISK_COLORS = { HIGH: '#EF4444', MEDIUM: '#F59E0B', LOW: '#2ECC71' }
-
 /** "YYYY-MM-DD" → "dd Oca" kısa format */
 function fmtDay(d) {
   if (!d) return '?'
   const dt = new Date(d + 'T00:00:00Z')
   const months = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara']
   return `${dt.getUTCDate()} ${months[dt.getUTCMonth()]}`
-}
-
-function AITab({ range }) {
-  const [data, setData]           = useState(null)
-  const [loading, setLoading]     = useState(false)
-  const [error, setError]         = useState(null)
-  const [accuracy, setAccuracy]   = useState(null)
-  const [accLoading, setAccLoading] = useState(false)
-  const { pdfLoading, handlePdf, contentRef } = usePdfDownload({ tabId: 'ai', tabLabel: 'AI Özet', range })
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const { startDate, endDate } = rangeToDates(range)
-      const res = await adminApi.getAiSummary(startDate, endDate)
-      setData(res.data.data)
-    } catch (err) {
-      setError(err.response?.data?.message || 'AI özet raporu alınamadı')
-    } finally {
-      setLoading(false)
-    }
-  }, [range])
-
-  const loadAccuracy = useCallback(async () => {
-    setAccLoading(true)
-    try {
-      const { startDate, endDate } = rangeToDates(range)
-      const res = await adminApi.getAiAccuracy(startDate, endDate)
-      setAccuracy(res.data.data)
-    } catch (_) {
-      // silently skip — accuracy section remains hidden
-    } finally {
-      setAccLoading(false)
-    }
-  }, [range])
-
-  useEffect(() => { load() }, [load])
-  useEffect(() => { loadAccuracy() }, [loadAccuracy])
-
-  const rd = data?.riskDistribution ?? {}
-
-  // PieChart verisi
-  const pieData = data ? [
-    { name: 'LOW',    value: rd.low    ?? 0, pct: rd.lowPct    ?? 0 },
-    { name: 'MEDIUM', value: rd.medium ?? 0, pct: rd.mediumPct ?? 0 },
-    { name: 'HIGH',   value: rd.high   ?? 0, pct: rd.highPct   ?? 0 },
-  ] : []
-
-  // Günlük HIGH alarm grafiği
-  const lineData = (data?.predictionsByDay ?? []).map(d => ({
-    label: fmtDay(d.date),
-    high:  d.highCount,
-  }))
-
-  // Top zone yatay bar
-  const maxHigh = data?.topRiskyZones?.[0]?.highCount ?? 1
-  const topZones = data?.topRiskyZones ?? []
-
-  // HIGH oranına göre renk
-  const highPct = rd.highPct ?? 0
-  const highColor = highPct >= 10 ? 'text-red-400' : highPct >= 5 ? 'text-yellow-400' : 'text-eco-green'
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <PdfButton onClick={handlePdf} loading={pdfLoading} />
-      </div>
-      <div ref={contentRef} className="space-y-4">
-      {error && <ErrorBanner msg={error} />}
-
-      {/* 4 Kart */}
-      <div className={`grid gap-4 ${data?.hasConfidenceData ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2 lg:grid-cols-3'}`}>
-
-        <InsightCard
-          icon="🔮"
-          label="Toplam Tahmin"
-          value={data ? (data.totalPredictions).toLocaleString('tr-TR') : '…'}
-          sub="ai_predictions kayıt sayısı"
-          highlight
-        />
-
-        <div className="rounded-xl p-4 border bg-gray-800 border-gray-700">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <p className="text-gray-400 text-xs mb-1">HIGH Risk Oranı</p>
-              <p className={`text-xl font-bold ${data ? highColor : 'text-white'}`}>
-                {data ? `%${highPct.toFixed(1)}` : '…'}
-              </p>
-              {data && (
-                <div className="mt-2 w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      highPct >= 10 ? 'bg-red-400' : highPct >= 5 ? 'bg-yellow-400' : 'bg-eco-green'
-                    }`}
-                    style={{ width: `${Math.min(highPct * 5, 100)}%` }}
-                  />
-                </div>
-              )}
-              {data && <p className="text-gray-500 text-xs mt-1">{(rd.high ?? 0).toLocaleString('tr-TR')} HIGH tahmin</p>}
-            </div>
-            <span className="text-2xl select-none">🚨</span>
-          </div>
-        </div>
-
-        <InsightCard
-          icon="📍"
-          label="En Problemli Zone"
-          value={topZones[0]?.zoneName ?? (data ? 'Veri yok' : '…')}
-          sub={topZones[0] ? `${topZones[0].highCount} HIGH alarm` : null}
-          subColor="text-red-400"
-        />
-
-        {data?.hasConfidenceData && (
-          <InsightCard
-            icon="🎯"
-            label="Model Güven Skoru"
-            value={`%${data.avgConfidence.toFixed(1)}`}
-            sub="confidence ortalaması"
-          />
-        )}
-      </div>
-
-      {/* Orta: PieChart + LineChart */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-        {/* Risk Dağılımı Pie */}
-        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-white font-semibold text-sm">Risk Dağılımı</h2>
-            {loading && <Spinner />}
-          </div>
-          {pieData.some(d => d.value > 0) ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={85}
-                  paddingAngle={2}
-                  dataKey="value"
-                  label={({ name, pct }) => `${name} %${pct.toFixed(1)}`}
-                  labelLine={false}
-                >
-                  {pieData.map((entry, i) => (
-                    <Cell key={i} fill={RISK_COLORS[entry.name]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '0.5rem', fontSize: '12px' }}
-                  formatter={(v, name, props) => [
-                    `${v.toLocaleString('tr-TR')} tahmin (%${props.payload.pct.toFixed(1)})`,
-                    name,
-                  ]}
-                />
-                <Legend
-                  formatter={(value) => (
-                    <span style={{ color: RISK_COLORS[value], fontSize: 12 }}>{value}</span>
-                  )}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[220px] flex items-center justify-center text-gray-600 text-sm">
-              {loading ? 'Yükleniyor…' : 'Risk verisi bulunamadı'}
-            </div>
-          )}
-        </div>
-
-        {/* Günlük HIGH Alarm LineChart */}
-        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-          <h2 className="text-white font-semibold text-sm mb-2">Günlük HIGH Alarm Sayısı</h2>
-          {lineData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={lineData} margin={{ top: 10, right: 10, left: -15, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fill: '#9CA3AF', fontSize: 10 }}
-                  tickLine={false}
-                  interval={Math.max(0, Math.floor(lineData.length / 6) - 1)}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  tick={{ fill: '#9CA3AF', fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '0.5rem', fontSize: '12px' }}
-                  labelStyle={{ color: '#F9FAFB', marginBottom: 4 }}
-                  formatter={v => [v, 'HIGH Alarm']}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="high"
-                  stroke="#EF4444"
-                  strokeWidth={2}
-                  dot={lineData.length < 15}
-                  activeDot={{ r: 4, fill: '#EF4444' }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[220px] flex items-center justify-center text-gray-600 text-sm">
-              {loading ? 'Yükleniyor…' : 'HIGH alarm verisi bulunamadı'}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Alt: Top 5 Zone + İçgörü */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-        {/* En Problemli 5 Zone — yatay bar */}
-        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-          <h3 className="text-white font-semibold text-sm mb-3">En Problemli 5 Zone</h3>
-          {topZones.length > 0 ? (
-            <div className="space-y-2.5">
-              {topZones.map((z, i) => {
-                const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣']
-                const barW = Math.max((z.highCount / maxHigh) * 100, 3)
-                return (
-                  <div key={i} className="flex items-center gap-3">
-                    <span className="text-base select-none w-6">{medals[i]}</span>
-                    <span className="text-gray-300 text-sm w-28 truncate shrink-0">{z.zoneName}</span>
-                    <div className="flex-1 flex items-center gap-2">
-                      <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-red-500 rounded-full transition-all duration-500"
-                          style={{ width: `${barW}%` }}
-                        />
-                      </div>
-                      <span className="text-red-400 text-xs font-medium w-14 text-right shrink-0">
-                        {z.highCount} HIGH
-                      </span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="text-gray-600 text-sm">{loading ? 'Yükleniyor…' : 'Veri bulunamadı'}</p>
-          )}
-        </div>
-
-        {/* İçgörü */}
-        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex flex-col gap-3">
-          <p className="text-purple-400/80 text-xs font-semibold uppercase tracking-wide">AI İçgörü</p>
-          {data?.comparisonText ? (
-            <p className="text-gray-300 text-sm leading-relaxed">{data.comparisonText}</p>
-          ) : (
-            <p className="text-gray-600 text-sm">{loading ? 'Yükleniyor…' : 'Veri yok'}</p>
-          )}
-          {data && (
-            <div className="mt-auto pt-3 border-t border-gray-700 grid grid-cols-3 gap-2 text-center">
-              <div>
-                <p className="text-eco-green font-bold">{(rd.low ?? 0).toLocaleString('tr-TR')}</p>
-                <p className="text-gray-500 text-xs">LOW</p>
-              </div>
-              <div>
-                <p className="text-yellow-400 font-bold">{(rd.medium ?? 0).toLocaleString('tr-TR')}</p>
-                <p className="text-gray-500 text-xs">MEDIUM</p>
-              </div>
-              <div>
-                <p className="text-red-400 font-bold">{(rd.high ?? 0).toLocaleString('tr-TR')}</p>
-                <p className="text-gray-500 text-xs">HIGH</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Model Doğruluğu Paneli */}
-      {(accuracy || accLoading) && (
-        <div className="bg-gray-800 rounded-xl p-4 border border-purple-500/20">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-white font-semibold text-sm">Model Doğruluğu</h3>
-              <p className="text-gray-500 text-xs mt-0.5">
-                predicted_load vs gerçek density_pct karşılaştırması (±5 dk tolerans)
-              </p>
-            </div>
-            {accLoading && <Spinner />}
-          </div>
-
-          {accuracy && (
-            <>
-              {/* 3 metrik kart */}
-              <div className="grid grid-cols-3 gap-3 mb-4">
-
-                {/* MAE */}
-                <div className="bg-gray-900/60 rounded-lg p-3 text-center border border-gray-700">
-                  <p className="text-gray-400 text-xs mb-1">Ort. Sapma (MAE)</p>
-                  <p className={`text-2xl font-bold ${accuracy.maePct < 15 ? 'text-eco-green' : accuracy.maePct < 25 ? 'text-yellow-400' : 'text-red-400'}`}>
-                    %{accuracy.maePct.toFixed(1)}
-                  </p>
-                  <p className="text-gray-600 text-xs mt-1">{accuracy.mae.toFixed(4)} ham değer</p>
-                </div>
-
-                {/* Korelasyon */}
-                <div className="bg-gray-900/60 rounded-lg p-3 text-center border border-gray-700">
-                  <p className="text-gray-400 text-xs mb-1">Pearson Korelasyon</p>
-                  <p className={`text-2xl font-bold ${accuracy.correlation >= 0.7 ? 'text-eco-green' : accuracy.correlation >= 0.5 ? 'text-yellow-400' : 'text-red-400'}`}>
-                    {accuracy.correlation.toFixed(3)}
-                  </p>
-                  <p className="text-gray-600 text-xs mt-1">
-                    {accuracy.correlation >= 0.7 ? 'güçlü ilişki' : accuracy.correlation >= 0.5 ? 'orta ilişki' : 'zayıf ilişki'}
-                  </p>
-                </div>
-
-                {/* Eşleşen çift */}
-                <div className="bg-gray-900/60 rounded-lg p-3 text-center border border-gray-700">
-                  <p className="text-gray-400 text-xs mb-1">Eşleşen Tahmin</p>
-                  <p className="text-2xl font-bold text-purple-400">
-                    {accuracy.matchedPairs.toLocaleString('tr-TR')}
-                  </p>
-                  <p className="text-gray-600 text-xs mt-1">tahmin–ölçüm çifti</p>
-                </div>
-              </div>
-
-              {/* MAE görsel progress */}
-              <div className="mb-3">
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
-                  <span>Hata Oranı</span>
-                  <span>%{accuracy.maePct.toFixed(1)}</span>
-                </div>
-                <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-700 ${
-                      accuracy.maePct < 15 ? 'bg-eco-green' : accuracy.maePct < 25 ? 'bg-yellow-400' : 'bg-red-500'
-                    }`}
-                    style={{ width: `${Math.min(accuracy.maePct * 2, 100)}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-xs text-gray-700 mt-0.5">
-                  <span>0%</span>
-                  <span>Mükemmel &lt;%15</span>
-                  <span>50%</span>
-                </div>
-              </div>
-
-              {/* Türkçe açıklama */}
-              {accuracy.accuracyText && (
-                <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg px-3 py-2">
-                  <p className="text-gray-300 text-xs leading-relaxed">{accuracy.accuracyText}</p>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-      </div>
-    </div>
-  )
 }
 
 // ── Yoğunluk Sekmesi ─────────────────────────────────────────────────────────
@@ -921,9 +558,6 @@ function OccupancyTab({ range }) {
                     </div>
                     <span className="text-eco-green text-xs font-medium w-10 text-right shrink-0">%{pct}</span>
                   </div>
-                  {p.criticalCount > 0 && (
-                    <span className="text-red-400 text-xs shrink-0">{p.criticalCount} kritik</span>
-                  )}
                 </div>
               )
             })}
@@ -1001,30 +635,17 @@ function OccupancyTab({ range }) {
 
 function EnergyTab({ range }) {
   const [summary, setSummary]     = useState(null)
-  const [chartData, setChartData] = useState([])
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState(null)
+  const [sortKey, setSortKey]     = useState('avgKwh')
   const { pdfLoading, handlePdf, contentRef } = usePdfDownload({ tabId: 'energy', tabLabel: 'Enerji', range })
 
   const fetch = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const { startDate, endDate } = rangeToDates(range)
-      const [sumRes, chartRes] = await Promise.all([
-        adminApi.getEnergySummary(range),
-        adminApi.getEnergyReportRange(startDate, endDate),
-      ])
+      const sumRes = await adminApi.getEnergySummary(range)
       setSummary(sumRes.data.data)
-
-      const raw = chartRes.data.data ?? []
-      const byHour = Object.fromEntries(raw.map(p => [p.hour, p.value]))
-      setChartData(
-        Array.from({ length: 24 }, (_, h) => ({
-          label: `${String(h).padStart(2, '0')}:00`,
-          value: parseFloat((byHour[h] ?? 0).toFixed(2)),
-        }))
-      )
     } catch (err) {
       setError(err.response?.data?.message || 'Enerji raporu alınamadı')
     } finally {
@@ -1042,7 +663,7 @@ function EnergyTab({ range }) {
       <div ref={contentRef} className="space-y-4">
       {error && <ErrorBanner msg={error} />}
 
-      {/* Insight Cards */}
+      {/* 4 KPI Kartı */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <InsightCard
           icon="⚡"
@@ -1080,113 +701,134 @@ function EnergyTab({ range }) {
         </div>
       )}
 
-      {/* Chart */}
-      <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-white font-semibold">Saatlik Enerji Dağılımı</h2>
-            <p className="text-gray-500 text-xs mt-0.5">Seçili dönemin saat bazlı enerji ortalaması (kWh)</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {loading && <Spinner />}
-            {chartData.length > 0 && (
-              <button
-                onClick={() => exportCSV(chartData, `enerji-${range}.csv`)}
-                className="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
-              >
-                CSV
-              </button>
-            )}
-          </div>
-        </div>
-        <ResponsiveContainer width="100%" height={240}>
-          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -5, bottom: 5 }}>
-            <defs>
-              <linearGradient id="engGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="#F39C12" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#F39C12" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis dataKey="label" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} interval={2} />
-            <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => `${v}`} />
-            <Tooltip
-              contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '0.5rem', fontSize: '12px' }}
-              labelStyle={{ color: '#F9FAFB', marginBottom: 4 }}
-              formatter={v => [`${v} kWh`, 'Enerji']}
-            />
-            <Area type="monotone" dataKey="value" stroke="#F39C12" strokeWidth={2}
-              fill="url(#engGrad)" dot={false} activeDot={{ r: 4, fill: '#F39C12' }} />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Insight Text */}
-      {summary?.insightText && (
-        <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4">
-          <p className="text-yellow-500/80 text-xs font-semibold uppercase tracking-wide mb-1">İçgörü</p>
-          <p className="text-gray-300 text-sm leading-relaxed">{summary.insightText}</p>
-        </div>
-      )}
-
-      {/* ── Ek İstatistikler ─────────────────────────────────────────────── */}
-
-      {/* Son 24h + Saatlik Pik + Veri Zone sayısı */}
-      {summary && (
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          <InsightCard
-            icon="⏱️"
-            label="Son 24 Saat Tüketim"
-            value={`${summary.last24hKwh.toFixed(1)} kWh`}
-            sub="anlık son 24 saat toplamı"
-          />
-          <InsightCard
-            icon="⏰"
-            label="Saatlik Pik"
-            value={summary.topPeakHours?.[0]
-              ? `${String(summary.topPeakHours[0].hour).padStart(2,'0')}:00`
-              : '—'}
-            sub={summary.topPeakHours?.[0]
-              ? `${summary.topPeakHours[0].avgKwh.toFixed(1)} kWh ort. · 2. ${summary.topPeakHours[1] ? String(summary.topPeakHours[1].hour).padStart(2,'0')+':00' : '—'}`
-              : null}
-          />
-          <InsightCard
-            icon="📊"
-            label="Enerji Verisi Olan Zone"
-            value={`${summary.dataZoneCount} / 15`}
-            sub="geri kalan 9 zone'da sensör verisi yok"
-            subColor="text-yellow-400"
-          />
-        </div>
-      )}
-
-      {/* Zone Bazlı Tüketim Tam Listesi */}
-      {(summary?.zoneBreakdown?.length ?? 0) > 0 && (
+      {/* Gün Bazlı Enerji Trendi */}
+      {(summary?.dailyTrend?.length ?? 0) > 0 && (
         <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-          <h3 className="text-white font-semibold text-sm mb-3">Zone Bazlı Enerji Tüketimi</h3>
-          <div className="space-y-2">
-            {summary.zoneBreakdown.map((z, i) => {
-              const maxKwh = summary.zoneBreakdown[0].value
+          <h3 className="text-white font-semibold text-sm mb-1">Gün Bazlı Enerji Trendi</h3>
+          <p className="text-gray-500 text-xs mb-3">Dönem içi günlük ortalama enerji tüketimi (kWh)</p>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart
+              data={summary.dailyTrend.map(d => ({
+                label: fmtDay(d.date),
+                avg:   parseFloat(d.avgKwh.toFixed(1)),
+              }))}
+              margin={{ top: 5, right: 10, left: -20, bottom: 5 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+              <XAxis
+                dataKey="label"
+                tick={{ fill: '#9CA3AF', fontSize: 9 }}
+                tickLine={false}
+                interval={Math.max(0, Math.floor(summary.dailyTrend.length / 7) - 1)}
+              />
+              <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => `${v}`} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '0.5rem', fontSize: '12px' }}
+                formatter={v => [`${v} kWh`, 'Ort. Tüketim']}
+              />
+              <Bar dataKey="avg" radius={[3, 3, 0, 0]}>
+                {summary.dailyTrend.map((d, i) => (
+                  <Cell key={i} fill={d.avgKwh >= 20 ? '#EF4444' : d.avgKwh >= 12 ? '#F59E0B' : '#2ECC71'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Saatlik Enerji Tüketimi Top 5 */}
+      {(summary?.topPeakHours?.length ?? 0) > 0 && (
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+          <h3 className="text-white font-semibold text-sm mb-3">Saatlik Enerji Tüketimi (Top 5)</h3>
+          <div className="space-y-2.5">
+            {summary.topPeakHours.slice(0, 5).map((p, i) => {
+              const medals  = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣']
+              const maxKwh  = summary.topPeakHours[0]?.avgKwh || 1
+              const kwh     = parseFloat(p.avgKwh.toFixed(1))
+              const barW    = (p.avgKwh / maxKwh) * 100
               return (
                 <div key={i} className="flex items-center gap-3">
-                  <span className="text-gray-400 text-xs w-5 text-right">{i + 1}</span>
-                  <span className="text-gray-300 text-sm w-28 truncate shrink-0">{z.zoneName}</span>
+                  <span className="text-base select-none w-6 shrink-0">{medals[i]}</span>
+                  <span className="text-gray-300 text-sm w-14 shrink-0">
+                    {String(p.hour).padStart(2, '0')}:00
+                  </span>
                   <div className="flex-1 flex items-center gap-2">
                     <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-yellow-500 rounded-full transition-all duration-500"
-                        style={{ width: `${(z.value / maxKwh) * 100}%` }}
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          kwh >= 20 ? 'bg-red-500' : kwh >= 12 ? 'bg-yellow-400' : 'bg-eco-green'
+                        }`}
+                        style={{ width: `${Math.min(barW, 100)}%` }}
                       />
                     </div>
-                    <span className="text-yellow-400 text-xs font-medium w-20 text-right shrink-0">
-                      {z.value.toFixed(1)} kWh
+                    <span className="text-yellow-400 text-xs font-medium w-16 text-right shrink-0">
+                      {kwh} kWh
                     </span>
                   </div>
                 </div>
               )
             })}
           </div>
-          <p className="text-gray-600 text-xs mt-3">* 15 zone'dan sadece {summary.dataZoneCount}'ünde environmental_metrics verisi mevcut.</p>
+        </div>
+      )}
+
+      {/* Tüm Zone Enerji Detayları — sıralanabilir */}
+      {(summary?.zoneBreakdown?.length ?? 0) > 0 && (
+        <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-white font-semibold text-sm">Tüm Zone Enerji Detayları</h3>
+            <span className="text-gray-500 text-xs">sütuna tıkla → sırala</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="text-gray-500 border-b border-gray-700">
+                  {[
+                    { key: 'zoneName',      label: 'Zone'     },
+                    { key: 'avgKwh',        label: 'Ort. kWh' },
+                    { key: 'maxKwh',        label: 'Maks kWh' },
+                    { key: 'minKwh',        label: 'Min kWh'  },
+                    { key: 'criticalCount', label: 'Kritik'   },
+                    { key: 'readings',      label: 'Okuma'    },
+                  ].map(col => (
+                    <th
+                      key={col.key}
+                      onClick={() => setSortKey(col.key)}
+                      className={`pb-2 pr-4 cursor-pointer hover:text-gray-300 transition-colors select-none whitespace-nowrap ${
+                        sortKey === col.key ? 'text-yellow-400' : ''
+                      }`}
+                    >
+                      {col.label}{sortKey === col.key ? ' ▼' : ''}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...summary.zoneBreakdown]
+                  .sort((a, b) =>
+                    sortKey === 'zoneName'
+                      ? a.zoneName.localeCompare(b.zoneName)
+                      : (b[sortKey] ?? 0) - (a[sortKey] ?? 0)
+                  )
+                  .map((z, i) => {
+                    const avgKwh  = parseFloat(z.avgKwh.toFixed(1))
+                    const avgColor = avgKwh >= 20 ? '#EF4444' : avgKwh >= 12 ? '#F59E0B' : '#2ECC71'
+                    return (
+                      <tr key={i} className="border-b border-gray-700/40 hover:bg-gray-700/20 transition-colors">
+                        <td className="py-1.5 pr-4 text-gray-300 font-medium truncate max-w-[130px]">{z.zoneName}</td>
+                        <td className="py-1.5 pr-4 font-semibold" style={{ color: avgColor }}>{avgKwh} kWh</td>
+                        <td className="py-1.5 pr-4 text-gray-400">{parseFloat(z.maxKwh.toFixed(1))} kWh</td>
+                        <td className="py-1.5 pr-4 text-gray-400">{parseFloat(z.minKwh.toFixed(1))} kWh</td>
+                        <td className={`py-1.5 pr-4 font-semibold ${z.criticalCount > 0 ? 'text-red-400' : 'text-gray-600'}`}>
+                          {z.criticalCount}
+                        </td>
+                        <td className="py-1.5 pr-4 text-gray-500">{z.readings}</td>
+                      </tr>
+                    )
+                  })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1228,7 +870,8 @@ export default function ReportsPage() {
         <p className="text-gray-400 text-sm mt-0.5">Yoğunluk, enerji ve AI analiz raporları</p>
       </div>
 
-      {/* Zaman aralığı seçici */}
+      {/* Zaman aralığı seçici — Kullanıcı sekmesinde gizle */}
+      {tab !== 'users' && (
       <div className="flex flex-wrap gap-2">
         {RANGES.map(r => (
           <button
@@ -1244,6 +887,7 @@ export default function ReportsPage() {
           </button>
         ))}
       </div>
+      )}
 
       {/* Tab seçimi */}
       <div className="flex gap-2 flex-wrap">
@@ -1266,8 +910,7 @@ export default function ReportsPage() {
       {/* İçerik */}
       {tab === 'occupancy' && <OccupancyTab key={`occ-${range}`} range={range} />}
       {tab === 'energy'    && <EnergyTab    key={`eng-${range}`} range={range} />}
-      {tab === 'users'     && <UsersTab    key={`usr-${range}`} range={range} />}
-      {tab === 'ai'        && <AITab        key={`ai-${range}`}  range={range} />}
+      {tab === 'users'     && <UsersTab     key={`usr-${range}`} range={range} />}
     </div>
   )
 }

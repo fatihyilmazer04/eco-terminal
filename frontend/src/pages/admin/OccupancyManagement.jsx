@@ -43,16 +43,12 @@ function ZoneHistoryPanel({ zone, onClose }) {
     axiosInstance.get(`/api/heatmap/history?zone_id=${zone.zoneId}&hours=24`)
       .then(res => {
         const raw = res.data.data ?? []
-        // Backend'den gelen p.time → "HH:mm" formatında gerçek saat
-        // Son 24 saatlik pencereyi filtrele (güvenlik için)
-        const cutoff = Date.now() - 24 * 60 * 60 * 1000
-        setData(raw
-          .map(p => ({
-            label: p.time ?? '—',          // "14:30" gibi gerçek saat
-            pct:   parseFloat(((p.densityPct ?? 0) * 100).toFixed(1)),
-            count: p.peopleCount ?? 0,
-          }))
-        )
+        // Backend saatlik ortalama döndürür (max ~24 nokta), p.time = "HH:MM" gerçek saati
+        setData(raw.map(p => ({
+          label: p.time ?? '—',
+          pct:   parseFloat(((p.densityPct ?? 0) * 100).toFixed(1)),
+          count: p.peopleCount ?? 0,
+        })))
       })
       .catch(() => setError('Veri yüklenemedi'))
       .finally(() => setLoading(false))
@@ -103,7 +99,7 @@ function ZoneHistoryPanel({ zone, onClose }) {
                 dataKey="label"
                 tick={{ fill: '#9CA3AF', fontSize: 10 }}
                 tickLine={false}
-                interval={data.length > 12 ? Math.floor(data.length / 8) : 0}
+                interval={1}
               />
               <YAxis
                 tick={{ fill: '#9CA3AF', fontSize: 11 }}

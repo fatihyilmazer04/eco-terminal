@@ -354,13 +354,38 @@ public class ReportService {
             log.warn("last24h enerji sorgusu başarısız: {}", e.getMessage());
         }
 
-        // Zone bazlı tüketim tam listesi (zoneKwh map'ten)
-        List<ZoneStatEntry> zoneBreakdown = zoneKwh.entrySet().stream()
-                .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
-                .map(e -> new ZoneStatEntry(e.getKey(), round1(e.getValue())))
-                .collect(Collectors.toList());
+        // Zone bazlı detaylı enerji tablosu — tüm zone'lar için occupancy_readings'ten
+        // türetilmiş kWh: avgKwh = 5.0 + AVG(density_pct) * 15.0
+        // criticalCount: density_pct >= 0.85 olan okumalar (yüksek doluluk → yüksek enerji)
+        List<EnergySummaryResponse.ZoneEnergyDetail> zoneBreakdown = List.of();
+        try {
+            List<Map<String, Object>> zeRows = jdbc.queryForList(
+                    "SELECT z.zone_name, " +
+                    "ROUND((5.0 + AVG(or2.density_pct) * 15.0)::numeric,1) AS avg_kwh, " +
+                    "ROUND((5.0 + MAX(or2.density_pct) * 15.0)::numeric,1) AS max_kwh, " +
+                    "ROUND((5.0 + MIN(or2.density_pct) * 15.0)::numeric,1) AS min_kwh, " +
+                    "COUNT(*) FILTER (WHERE or2.density_pct >= 0.85) AS critical_count, " +
+                    "COUNT(*) AS total_readings " +
+                    "FROM occupancy_readings or2 " +
+                    "JOIN zones z ON or2.zone_id = z.zone_id " +
+                    "WHERE or2.recorded_at >= ? AND or2.recorded_at < ? " +
+                    "GROUP BY z.zone_name " +
+                    "ORDER BY avg_kwh DESC",
+                    Timestamp.from(pStart), Timestamp.from(pEnd));
+            zoneBreakdown = zeRows.stream()
+                    .map(r -> new EnergySummaryResponse.ZoneEnergyDetail(
+                            String.valueOf(r.get("zone_name")),
+                            toDouble(r.get("avg_kwh")),
+                            toDouble(r.get("max_kwh")),
+                            toDouble(r.get("min_kwh")),
+                            toLong(r.get("critical_count")),
+                            toLong(r.get("total_readings"))))
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.warn("zoneBreakdown (energy) sorgusu başarısız: {}", e.getMessage());
+        }
 
-        // Saatlik pik analizi — top 3 saat
+        // Saatlik pik analizi — top 5 saat
         Map<Integer, DoubleSummaryStatistics> hourEnergyStats = metrics.stream()
                 .filter(m -> m.getEnergyKwh() != null)
                 .collect(Collectors.groupingBy(
@@ -370,10 +395,30 @@ public class ReportService {
                 .sorted(Comparator.comparingDouble(
                         (Map.Entry<Integer, DoubleSummaryStatistics> e) -> e.getValue().getAverage())
                         .reversed())
-                .limit(3)
+                .limit(5)
                 .map(e -> new EnergySummaryResponse.PeakHourEntry(
                         e.getKey(), round1(e.getValue().getAverage())))
                 .collect(Collectors.toList());
+
+        // Gün bazlı enerji trendi — occupancy_readings'ten türetilmiş kWh
+        // avgKwh = 5.0 + AVG(density_pct) * 15.0  (30 günlük pencerede her gün veri var)
+        List<EnergySummaryResponse.EnergyDailyTrendPoint> dailyTrend = List.of();
+        try {
+            List<Map<String, Object>> dtRows = jdbc.queryForList(
+                    "SELECT TO_CHAR(recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, " +
+                    "ROUND((5.0 + AVG(density_pct) * 15.0)::numeric,1) AS avg_kwh " +
+                    "FROM occupancy_readings " +
+                    "WHERE recorded_at >= ? AND recorded_at < ? " +
+                    "GROUP BY day ORDER BY day",
+                    Timestamp.from(pStart), Timestamp.from(pEnd));
+            dailyTrend = dtRows.stream()
+                    .map(r -> new EnergySummaryResponse.EnergyDailyTrendPoint(
+                            String.valueOf(r.get("day")),
+                            toDouble(r.get("avg_kwh"))))
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.warn("energyDailyTrend sorgusu başarısız: {}", e.getMessage());
+        }
 
         // Tasarruf potansiyeli: yüksek enerji + düşük doluluk eşleşmesi
         List<EnergySummaryResponse.SavingsOpportunity> savingsOpportunities = List.of();
@@ -407,7 +452,8 @@ public class ReportService {
                 topZoneName, round1(topZoneKwh),
                 round1(avgTemp), round1(avgLux),
                 settingChanges, hasData, insightText,
-                last24hKwh, zoneBreakdown, topPeakHours, savingsOpportunities, zoneKwh.size());
+                last24hKwh, zoneBreakdown, topPeakHours, savingsOpportunities, zoneBreakdown.size(),
+                dailyTrend);
     }
 
     // ── AI Özet raporu ───────────────────────────────────────────────────────

@@ -46,4 +46,13 @@ public class Zone {
     @Column(name = "status", nullable = false, length = 20)
     @Builder.Default
     private ZoneStatus status = ZoneStatus.ACTIVE;
+
+    /**
+     * QR doğrulama token'ı — V26 migration ile atanır.
+     * Format: "GATE-A1-4F9E2C", "SEC1-A3F2B1", vb.
+     * Admin panelinde QR kod olarak gösterilir; kullanıcılar rota adımlarını
+     * bu QR'ı okutarak tamamlar.
+     */
+    @Column(name = "qr_token", unique = true, length = 50)
+    private String qrToken;
 }
