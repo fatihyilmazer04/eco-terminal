@@ -29,7 +29,7 @@ public class LoyaltyService {
 
     // ── Cüzdan ────────────────────────────────────────────────────────────
 
-    @Transactional(readOnly = true)
+    @Transactional
     public WalletResponse getWallet(Long userId) {
         EcoWallet wallet = getOrCreateWallet(userId);
         return WalletResponse.from(wallet);
@@ -148,7 +148,7 @@ public class LoyaltyService {
 
     // ── İşlem Geçmişi ────────────────────────────────────────────────────
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<TransactionResponse> getTransactionHistory(Long userId) {
         EcoWallet wallet = getOrCreateWallet(userId);
         return txRepo.findByWallet_WalletIdOrderByCreatedAtDesc(wallet.getWalletId())
@@ -159,7 +159,7 @@ public class LoyaltyService {
 
     // ── Sahip Olunan Kodlar ───────────────────────────────────────────────
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<RedemptionResponse> getMyRedemptions(Long userId) {
         EcoWallet wallet = getOrCreateWallet(userId);
         return txRepo.findByWallet_WalletIdAndRedemptionCodeIsNotNullOrderByCreatedAtDesc(wallet.getWalletId())
@@ -170,7 +170,7 @@ public class LoyaltyService {
 
     // ── Ödül Kataloğu ────────────────────────────────────────────────────
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<RewardResponse> getRewardCatalog(Long userId) {
         int balance = getOrCreateWallet(userId).getCurrentBalance();
         return rewardRepo.findByIsActiveTrue()
