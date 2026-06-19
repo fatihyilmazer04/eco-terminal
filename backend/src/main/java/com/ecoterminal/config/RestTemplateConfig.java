@@ -29,8 +29,8 @@ public class RestTemplateConfig {
     @Qualifier("yoloRestTemplate")
     public RestTemplate yoloRestTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(5_000);   // 5 saniye
-        factory.setReadTimeout(60_000);     // 60 saniye (büyük görseller için)
+        factory.setConnectTimeout(30_000);  // 30 saniye (Render soğuk başlatma)
+        factory.setReadTimeout(90_000);     // 90 saniye (büyük görseller + soğuk başlatma)
         return new RestTemplate(factory);
     }
 }

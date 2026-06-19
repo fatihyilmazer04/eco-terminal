@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -85,15 +86,35 @@ public class ImageAnalysisController {
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(yoloBody, headers);
 
-        Map<?, ?> yoloResponse;
-        try {
-            ResponseEntity<Map> resp = yoloRestTemplate.postForEntity(
-                    detectUrl, entity, Map.class);
-            yoloResponse = resp.getBody();
-        } catch (Exception ex) {
-            log.error("YOLOv8 servisine bağlanılamadı ({}): {}", detectUrl, ex.getMessage());
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                    "Görüntü analiz servisi şu an erişilemiyor. Lütfen tekrar deneyin.");
+        // Render free plan: soğuk başlatma sırasında 502 döner, servis ~30-60s içinde ayağa kalkar.
+        // 3 deneme × 20s bekleme = toplamda 60s tolerans.
+        Map<?, ?> yoloResponse = null;
+        int maxAttempts = 3;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                ResponseEntity<Map> resp = yoloRestTemplate.postForEntity(
+                        detectUrl, entity, Map.class);
+                yoloResponse = resp.getBody();
+                break; // başarılı — döngüden çık
+            } catch (HttpServerErrorException ex) {
+                // 502/503: servis uyanıyor olabilir
+                if (attempt < maxAttempts && (ex.getStatusCode() == HttpStatus.BAD_GATEWAY
+                        || ex.getStatusCode() == HttpStatus.SERVICE_UNAVAILABLE)) {
+                    log.warn("YOLOv8 servisi soğuk başlatma (deneme {}/{}): {} — 20s bekleniyor...",
+                            attempt, maxAttempts, ex.getStatusCode());
+                    try { Thread.sleep(20_000); } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                } else {
+                    log.error("YOLOv8 servisine bağlanılamadı ({}): {}", detectUrl, ex.getMessage());
+                    throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                            "Görüntü analiz servisi şu an erişilemiyor. Lütfen tekrar deneyin.");
+                }
+            } catch (Exception ex) {
+                log.error("YOLOv8 servisine bağlanılamadı ({}): {}", detectUrl, ex.getMessage());
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "Görüntü analiz servisi şu an erişilemiyor. Lütfen tekrar deneyin.");
+            }
         }
 
         if (yoloResponse == null) {
