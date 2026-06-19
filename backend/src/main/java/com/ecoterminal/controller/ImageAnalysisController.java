@@ -89,7 +89,9 @@ public class ImageAnalysisController {
         // Render free plan: soğuk başlatma sırasında 502 döner, servis ~30-60s içinde ayağa kalkar.
         // 3 deneme × 20s bekleme = toplamda 60s tolerans.
         Map<?, ?> yoloResponse = null;
-        int maxAttempts = 3;
+        // Render free plan soğuk başlatma ~60-90s sürebilir.
+        // 5 deneme × 25s = 125s toplam tolerans (yoloRestTemplate readTimeout=90s ile uyumlu).
+        int maxAttempts = 5;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 ResponseEntity<Map> resp = yoloRestTemplate.postForEntity(
@@ -100,9 +102,9 @@ public class ImageAnalysisController {
                 // 502/503: servis uyanıyor olabilir
                 if (attempt < maxAttempts && (ex.getStatusCode() == HttpStatus.BAD_GATEWAY
                         || ex.getStatusCode() == HttpStatus.SERVICE_UNAVAILABLE)) {
-                    log.warn("YOLOv8 servisi soğuk başlatma (deneme {}/{}): {} — 20s bekleniyor...",
+                    log.warn("YOLOv8 servisi soğuk başlatma (deneme {}/{}): {} — 25s bekleniyor...",
                             attempt, maxAttempts, ex.getStatusCode());
-                    try { Thread.sleep(20_000); } catch (InterruptedException ie) {
+                    try { Thread.sleep(25_000); } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                     }
                 } else {
