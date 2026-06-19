@@ -13,8 +13,10 @@ RUN npm install --silent
 COPY . .
 
 # VITE_API_BASE_URL build-time değişkeni (Vite bake eder)
-# Docker: '' (boş) → nginx proxy; local dev: Vite proxy
-ARG VITE_API_BASE_URL=""
+# Render: default → tarayıcı backend'e direkt HTTPS yapar (nginx proxy loop olmaz)
+# Local Docker Compose: docker-compose.yml'de "" olarak override edilir → nginx proxy kullanılır
+# Local dev (npm run dev): Vite'ın kendi proxy'si devreye girer, bu ARG önemsiz
+ARG VITE_API_BASE_URL="https://eco-terminal-backend.onrender.com"
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
 RUN npm run build
