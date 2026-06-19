@@ -52,21 +52,10 @@ spring:
     baseline-on-migrate: true
     validate-on-migrate: true
 
-# ── Email (SMTP) ─────────────────────────────────────────────────────────────
-  mail:
-    host: smtp.gmail.com
-    port: 587
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
-    test-connection: false        # Startup'ta SMTP bağlantısı test edilmesin
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
-        debug: false
+# ── Resend Email API ─────────────────────────────────────────────────────────
+resend:
+  api-key: ${RESEND_API_KEY:}
+  from: ${MAIL_FROM:noreply@ecoterminal.com}
 
 # ── JWT ─────────────────────────────────────────────────────────────────────
 jwt:
@@ -106,9 +95,6 @@ management:
   endpoint:
     health:
       show-details: always
-  health:
-    mail:
-      enabled: false            # SMTP credentialı olmadan startup health'i bozmaz
   metrics:
     export:
       prometheus:

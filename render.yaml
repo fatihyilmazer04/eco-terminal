@@ -64,12 +64,12 @@ services:
       # ── CORS (frontend origin) ──
       - key: CORS_ORIGINS
         value: https://eco-terminal-frontend.onrender.com
-      # ── E-posta (isteğe bağlı, false bırakınca demo modu) ──
+      # ── E-posta (Resend API) ──
       - key: MAIL_ENABLED
-        value: "false"
-      - key: MAIL_USERNAME
+        value: "true"
+      - key: RESEND_API_KEY
         sync: false
-      - key: MAIL_PASSWORD
+      - key: MAIL_FROM
         sync: false
       # ── AI Servisi ──
       - key: AI_SERVICE_URL

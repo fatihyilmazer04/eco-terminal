@@ -1,50 +1,43 @@
 package com.ecoterminal.service;
 
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.MimeMessage;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.MailException;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
-import java.io.UnsupportedEncodingException;
+import java.util.List;
+import java.util.Map;
 
+/**
+ * E-posta gönderim servisi — Resend API (https://resend.com) üzerinden çalışır.
+ * MAIL_ENABLED=false veya RESEND_API_KEY boş ise demo moduna düşer:
+ * kod backend log'una yazılır, gerçek mail gönderilmez.
+ */
 @Slf4j
 @Service
 public class EmailService {
 
-    /**
-     * required = false — MAIL_ENABLED=false ortamında (Render demo modu) JavaMailSender
-     * bean'i oluşturulamamış olsa bile EmailService ayağa kalkar.
-     * mailSender null ise send() otomatik olarak demo (log-only) moduna düşer.
-     */
-    @Autowired(required = false)
-    private JavaMailSender mailSender;
+    @Value("${resend.api-key:}")
+    private String apiKey;
+
+    @Value("${resend.from:noreply@ecoterminal.com}")
+    private String fromAddress;
 
     @Value("${app.mail.enabled:false}")
     private boolean mailEnabled;
 
-    @Value("${spring.mail.username:}")
-    private String fromAddress;
-
+    private static final String RESEND_URL  = "https://api.resend.com/emails";
     private static final String SENDER_NAME = "Eco-Terminal";
+
+    private final RestTemplate restTemplate = new RestTemplate();
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    /**
-     * Email doğrulama kodu gönderir (kayıt akışı).
-     */
     public void sendVerificationCode(String toEmail, String code) {
         send(toEmail, code, "register");
     }
 
-    /**
-     * Şifre sıfırlama kodu gönderir.
-     */
     public void sendPasswordResetCode(String toEmail, String code) {
         send(toEmail, code, "reset");
     }
@@ -52,28 +45,37 @@ public class EmailService {
     // ── Ortak gönderim ───────────────────────────────────────────────────────
 
     private void send(String toEmail, String code, String type) {
-        // Demo modu: MAIL_ENABLED=false VEYA JavaMailSender bean inject edilememiş
-        if (!mailEnabled || mailSender == null) {
-            if (mailEnabled && mailSender == null) {
-                log.warn("[EMAIL] MAIL_ENABLED=true ama JavaMailSender mevcut değil — demo moduna düşüldü");
+        if (!mailEnabled || apiKey.isBlank()) {
+            if (mailEnabled && apiKey.isBlank()) {
+                log.warn("[EMAIL] MAIL_ENABLED=true ama RESEND_API_KEY boş — demo moduna düşüldü");
             }
             logDemoCode(toEmail, code, type);
             return;
         }
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + apiKey);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> body = Map.of(
+                "from",    SENDER_NAME + " <" + fromAddress + ">",
+                "to",      List.of(toEmail),
+                "subject", subject(type),
+                "html",    buildHtml(code, type)
+        );
+
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+
         try {
-            MimeMessage mime = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mime, true, "UTF-8");
-
-            // Gönderen: "Eco-Terminal <your@gmail.com>"
-            helper.setFrom(new InternetAddress(fromAddress, SENDER_NAME));
-            helper.setTo(toEmail);
-            helper.setSubject(subject(type));
-            helper.setText(buildHtml(code, type), true); // true = HTML
-
-            mailSender.send(mime);
-            log.info("[EMAIL] {} kodu gönderildi: {}", type, toEmail);
-        } catch (MailException | MessagingException | UnsupportedEncodingException ex) {
-            log.warn("[EMAIL] SMTP hatası ({}), DEMO MODU devreye girdi: {}", ex.getMessage(), toEmail);
+            ResponseEntity<Map> response = restTemplate.postForEntity(RESEND_URL, entity, Map.class);
+            if (response.getStatusCode().is2xxSuccessful()) {
+                log.info("[EMAIL] {} kodu gönderildi: {}", type, toEmail);
+            } else {
+                log.warn("[EMAIL] Resend API {} hatası — demo moduna düşüldü", response.getStatusCode());
+                logDemoCode(toEmail, code, type);
+            }
+        } catch (Exception ex) {
+            log.warn("[EMAIL] Resend API hatası ({}), demo moduna düşüldü: {}", ex.getMessage(), toEmail);
             logDemoCode(toEmail, code, type);
         }
     }
@@ -92,7 +94,7 @@ public class EmailService {
         log.info("║  DEMO MODU — {} KOD", label);
         log.info("║  E-posta : {}", email);
         log.info("║  Kod     : {}", code);
-        log.info("║  (MAIL_ENABLED=true yapınca gerçek mail gider)   ║");
+        log.info("║  (MAIL_ENABLED=true + RESEND_API_KEY ile gerçek mail gider)");
         log.info("╚══════════════════════════════════════════════════╝");
     }
 
@@ -117,8 +119,6 @@ public class EmailService {
                     <tr><td align="center">
                       <table width="560" cellpadding="0" cellspacing="0"
                              style="background:#1e293b;border-radius:16px;border:1px solid #334155;overflow:hidden;">
-
-                        <!-- Header -->
                         <tr>
                           <td style="background:linear-gradient(135deg,#1a3a2a,#0f2d1f);
                                      padding:32px 40px;text-align:center;border-bottom:1px solid #2ECC7130;">
@@ -131,14 +131,10 @@ public class EmailService {
                             </div>
                           </td>
                         </tr>
-
-                        <!-- Body -->
                         <tr>
                           <td style="padding:40px;">
                             <h2 style="color:#f1f5f9;font-size:20px;margin:0 0 12px 0;">%s</h2>
                             <p style="color:#94a3b8;font-size:14px;line-height:1.6;margin:0 0 28px 0;">%s</p>
-
-                            <!-- Kod kutusu -->
                             <div style="background:#0f172a;border:2px solid #2ECC7150;border-radius:12px;
                                         padding:24px;text-align:center;margin-bottom:28px;">
                               <div style="color:#64748b;font-size:11px;text-transform:uppercase;
@@ -146,32 +142,26 @@ public class EmailService {
                               <div style="color:#2ECC71;font-size:40px;font-weight:700;
                                           letter-spacing:12px;font-family:monospace;">%s</div>
                               <div style="color:#64748b;font-size:12px;margin-top:12px;">
-                                ⏱ 10 dakika geçerlidir
+                                &#9201; 10 dakika geçerlidir
                               </div>
                             </div>
-
-                            <!-- Uyarı -->
                             <div style="background:#f59e0b15;border:1px solid #f59e0b30;border-radius:8px;
                                         padding:12px 16px;margin-bottom:24px;">
                               <span style="color:#f59e0b;font-size:13px;">
-                                🔒 Bu kodu <strong>kimseyle paylaşmayın.</strong>
+                                &#128274; Bu kodu <strong>kimseyle paylaşmayın.</strong>
                                 Eco-Terminal çalışanları sizden asla kod istemez.
                               </span>
                             </div>
-
                             <p style="color:#475569;font-size:13px;line-height:1.6;margin:0;">%s</p>
                           </td>
                         </tr>
-
-                        <!-- Footer -->
                         <tr>
                           <td style="padding:20px 40px;border-top:1px solid #1e293b;text-align:center;">
                             <div style="color:#334155;font-size:12px;">
-                              © 2026 Eco-Terminal · Tüm hakları saklıdır
+                              &#169; 2026 Eco-Terminal &middot; Tüm hakları saklıdır
                             </div>
                           </td>
                         </tr>
-
                       </table>
                     </td></tr>
                   </table>
