@@ -15,8 +15,12 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+try:
+    import torch
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification
+    _TORCH_AVAILABLE = True
+except ImportError:
+    _TORCH_AVAILABLE = False
 
 from app.intent.base import BaseClassifier, IntentLabel, IntentResult
 from app.intent.rule_based import RuleBasedClassifier
@@ -55,6 +59,10 @@ class DistilBertClassifier(BaseClassifier):
         """
         if self._loaded:
             return True
+
+        if not _TORCH_AVAILABLE:
+            logger.warning("distilbert_unavailable: torch/transformers not installed — using rule-based fallback")
+            return False
 
         if not self.model_dir.exists():
             logger.error("distilbert_model_not_found path=%s", self.model_dir)

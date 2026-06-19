@@ -18,6 +18,8 @@ gunicorn==22.0.0
 google-generativeai==0.5.4
 
 # DistilBERT intent classifier (Step 4.2)
-torch>=2.1.0
-transformers==4.40.0
-tokenizers==0.19.1
+# torch/transformers isteğe bağlı — yoksa rule-based fallback devreye girer.
+# Render free plan 512 MB sınırı nedeniyle production'da yüklenmez.
+# torch>=2.1.0
+# transformers==4.40.0
+# tokenizers==0.19.1
