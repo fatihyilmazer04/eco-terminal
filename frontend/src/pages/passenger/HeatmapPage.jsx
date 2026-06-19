@@ -132,22 +132,9 @@ export default function HeatmapPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-white">Terminal Yoğunluk Haritası</h1>
-          <p className="text-gray-400 text-sm mt-0.5">Her 15 saniyede bir güncelleniyor</p>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-sm text-gray-400">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-eco-green opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-eco-green" />
-            </span>
-            Canlı
-          </div>
-          {lastUpdated && (
-            <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">
-              {lastUpdated.toLocaleTimeString('tr-TR')}
-            </span>
-          )}
           <button
             onClick={refetch}
             className="text-gray-400 hover:text-white transition-colors p-1.5 rounded hover:bg-gray-700"

@@ -312,9 +312,6 @@ export default function PassengerDashboard() {
         <h1 className="text-2xl font-bold text-white">
           Merhaba, {user?.fullName?.split(' ')[0] ?? 'Yolcu'} 👋
         </h1>
-        <p className="text-gray-400 text-sm mt-0.5">
-          Terminal durumu gerçek zamanlı güncelleniyor
-        </p>
       </div>
 
       {/* 1 — Yaklaşan uçuş özeti */}

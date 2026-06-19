@@ -86,12 +86,6 @@ export default function LoungesPage() {
         </div>
       )}
 
-      {/* Alt bilgi */}
-      <div className="px-4 py-3 rounded-xl bg-eco-green/5 border border-eco-green/20 text-center">
-        <p className="text-eco-green text-xs">
-          Sakin alanlarda bekleme yaparak Eko-Puan kazanabilirsiniz 🌿
-        </p>
-      </div>
     </div>
   )
 }

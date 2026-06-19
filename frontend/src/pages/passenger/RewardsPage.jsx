@@ -119,7 +119,6 @@ export default function RewardsPage() {
               ))}
             </div>
           )}
-          <EarnGuide />
         </>
       )}
 
@@ -318,29 +317,6 @@ function RedemptionCodeCard({ item }) {
   )
 }
 
-function EarnGuide() {
-  const items = [
-    { action: '🗺 Eko-Rota Seç',       points: '+50' },
-    { action: '✈ Check-in Tamamla',    points: '+25' },
-    { action: '🛋 Lounge\'a Gir',       points: '+20' },
-    { action: '🌿 Eko Rota Kullan',     points: '+15' },
-    { action: '🧘 Sakin Alanda Bekle',  points: '+10' },
-  ]
-
-  return (
-    <div className="bg-eco-green/5 border border-eco-green/20 rounded-xl p-4">
-      <p className="text-eco-green text-sm font-semibold mb-3">Nasıl Puan Kazanılır?</p>
-      <div className="space-y-2">
-        {items.map(item => (
-          <div key={item.action} className="flex items-center justify-between text-xs">
-            <span className="text-gray-300">{item.action}</span>
-            <span className="text-eco-green font-bold">{item.points}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 function TransactionRow({ tx }) {
   const isEarn = tx.transType === 'EARN'
