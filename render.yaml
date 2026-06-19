@@ -1,0 +1,87 @@
+services:
+
+  # ── AI Service (Flask / LSTM) ──────────────────────────────────────────────
+  - type: web
+    name: eco-terminal-ai
+    runtime: docker
+    dockerfilePath: ai-service/Dockerfile
+    dockerContext: ai-service
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: FLASK_ENV
+        value: production
+
+  # ── LLM Service (FastAPI / RAG Chatbot) ───────────────────────────────────
+  - type: web
+    name: eco-terminal-llm
+    runtime: docker
+    dockerfilePath: llm-service/Dockerfile
+    dockerContext: llm-service
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: BACKEND_BASE_URL
+        value: https://eco-terminal-backend.onrender.com
+      - key: BACKEND_INTERNAL_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.0-flash
+      - key: ENABLE_INTENT_CLASSIFIER
+        value: "true"
+      - key: ENABLE_RAG
+        value: "true"
+
+  # ── YOLOv8 Service (Flask / Crowd Detection) ──────────────────────────────
+  - type: web
+    name: eco-terminal-yolo
+    runtime: docker
+    dockerfilePath: yolov8-service/Dockerfile
+    dockerContext: yolov8-service
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "5432"
+      - key: POSTGRES_DB
+        sync: false
+      - key: POSTGRES_USER
+        sync: false
+      - key: POSTGRES_PASSWORD
+        sync: false
+      - key: AI_SERVICE_URL
+        sync: false
+      - key: ENABLE_AUTO_SCAN
+        value: "false"
+      - key: FLASK_ENV
+        value: production
+
+  # ── Frontend (React / Nginx) ───────────────────────────────────────────────
+  - type: web
+    name: eco-terminal-frontend
+    runtime: docker
+    dockerfilePath: frontend/Dockerfile
+    dockerContext: frontend
+    plan: free
+    region: frankfurt
+    dockerBuildArgs:
+      - key: BACKEND_URL
+        sync: false
+      - key: YOLO_URL
+        sync: false
+      - key: VITE_API_BASE_URL
+        value: ""
