@@ -99,14 +99,14 @@ export default function LoginPage() {
 
             {/* E-posta */}
             <div>
-              <label className="text-[#4A6080] text-[11px] block mb-1.5">E-posta</label>
+              <label htmlFor="email" className="text-[#4A6080] text-[11px] block mb-1.5">E-posta</label>
               <div className={`border-b pb-2.5 flex items-center gap-2 ${errors.email ? 'border-red-500/60' : 'border-[#1E3050]'}`}>
                 <svg className="w-4 h-4 text-[#253545] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
                     d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
                 </svg>
                 <input
-                  name="email" type="email" autoComplete="email"
+                  id="email" name="email" type="email" autoComplete="email"
                   value={form.email} onChange={handleChange}
                   placeholder="ornek@mail.com"
                   className="bg-transparent flex-1 text-[#8AA0BC] text-[13px] outline-none placeholder-[#253545]"
@@ -118,7 +118,7 @@ export default function LoginPage() {
             {/* Şifre */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[#4A6080] text-[11px]">Şifre</label>
+                <label htmlFor="password" className="text-[#4A6080] text-[11px]">Şifre</label>
                 <Link to="/forgot-password" className="text-eco-green text-[11px] hover:text-green-400 transition-colors">
                   Şifremi Unuttum?
                 </Link>
@@ -129,7 +129,7 @@ export default function LoginPage() {
                     d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                 </svg>
                 <input
-                  name="password" type="password" autoComplete="current-password"
+                  id="password" name="password" type="password" autoComplete="current-password"
                   value={form.password} onChange={handleChange}
                   placeholder="••••••••"
                   className="bg-transparent flex-1 text-[#8AA0BC] text-[13px] outline-none placeholder-[#253545]"
