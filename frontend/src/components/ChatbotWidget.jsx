@@ -137,7 +137,6 @@ export default function ChatbotWidget() {
           </div>
           <div>
             <p className="text-white text-sm font-semibold leading-tight">Eco Asistan</p>
-            <p className="text-eco-green text-[10px]">RAG + DistilBERT · Gerçek zamanlı</p>
           </div>
         </div>
         <button
@@ -193,9 +192,6 @@ export default function ChatbotWidget() {
             </svg>
           </button>
         </div>
-        <p className="text-[10px] text-gray-600 mt-1.5 text-center">
-          Örnek: "A1 kapısına en az kalabalık yoldan nasıl giderim?"
-        </p>
       </div>
     </div>
   )

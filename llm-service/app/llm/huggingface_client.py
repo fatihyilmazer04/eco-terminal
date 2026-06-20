@@ -54,7 +54,7 @@ class HuggingFaceClient:
             try:
                 self._model = AutoModelForCausalLM.from_pretrained(
                     self.model_id,
-                    dtype=torch.float16,
+                    torch_dtype=torch.float16,
                     trust_remote_code=True,
                 ).to("cuda")
                 logger.info("hf_model_loaded_on_gpu model=%s", self.model_id)
@@ -63,14 +63,14 @@ class HuggingFaceClient:
                 self.device = "cpu"
                 self._model = AutoModelForCausalLM.from_pretrained(
                     self.model_id,
-                    dtype=torch.float32,
+                    torch_dtype=torch.float32,
                     trust_remote_code=True,
                 )
                 logger.info("hf_model_loaded_on_cpu model=%s", self.model_id)
         else:
             self._model = AutoModelForCausalLM.from_pretrained(
                 self.model_id,
-                dtype=torch.float32,
+                torch_dtype=torch.float32,
                 trust_remote_code=True,
             )
             logger.info("hf_model_loaded_on_cpu model=%s", self.model_id)

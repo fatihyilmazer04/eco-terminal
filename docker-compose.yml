@@ -73,6 +73,7 @@ services:
       MAIL_ENABLED: ${MAIL_ENABLED:-false}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       LLM_SERVICE_INTERNAL_TOKEN: ${LLM_SERVICE_INTERNAL_TOKEN:-default-dev-token}
+      LLM_SERVICE_URL: http://host.docker.internal:8000
     ports:
       - "8080:8080"
     depends_on:

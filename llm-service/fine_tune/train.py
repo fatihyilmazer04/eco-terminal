@@ -15,9 +15,9 @@ Gereksinimler:
 
 import os
 import json
-import torch
 from pathlib import Path
 
+# datasets, torch'tan ÖNCE import edilmeli (Windows DLL sırası)
 from datasets import Dataset
 from transformers import (
     AutoTokenizer,
@@ -25,7 +25,9 @@ from transformers import (
     TrainingArguments,
 )
 from peft import LoraConfig, get_peft_model, TaskType
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
+from trl import SFTTrainer
+
+import torch
 
 # ── Yollar ────────────────────────────────────────────────────────────────────
 BASE_DIR    = Path(__file__).parent
@@ -70,13 +72,18 @@ def format_messages(tokenizer, example):
 
 
 def main():
+    # Önce local cache path'i bul (HF model ID yerine local path ile load)
+    from huggingface_hub import snapshot_download
+    local_model_path = snapshot_download(BASE_MODEL, local_files_only=True)
+
     print(f"[Config] Model: {BASE_MODEL}")
+    print(f"[Config] Local path: {local_model_path}")
     print(f"[Config] Device: {'cuda' if torch.cuda.is_available() else 'cpu'}")
     print(f"[Config] Epochs: {NUM_EPOCHS}, Batch: {BATCH_SIZE}, LR: {LEARNING_RATE}")
 
     # ── Tokenizer ──────────────────────────────────────────────────────────────
     print("[1/5] Tokenizer yükleniyor...")
-    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(local_model_path)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.padding_side = "right"
@@ -93,8 +100,8 @@ def main():
     # ── Model ─────────────────────────────────────────────────────────────────
     print("[3/5] Model yükleniyor...")
     model = AutoModelForCausalLM.from_pretrained(
-        BASE_MODEL,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+        local_model_path,
+        torch_dtype=torch.float32,
         trust_remote_code=True,
         device_map="auto",
     )
@@ -126,10 +133,9 @@ def main():
         logging_steps=5,
         save_steps=50,
         save_total_limit=2,
-        fp16=torch.cuda.is_available(),
+        fp16=False,
         dataloader_num_workers=0,
         report_to="none",
-        remove_unused_columns=False,
     )
 
     trainer = SFTTrainer(
@@ -152,7 +158,7 @@ def main():
     print(f"[Merge] LoRA + base model birleştiriliyor → {MERGED_DIR}")
     from peft import PeftModel
     base_model = AutoModelForCausalLM.from_pretrained(
-        BASE_MODEL,
+        local_model_path,
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
         trust_remote_code=True,
     )
