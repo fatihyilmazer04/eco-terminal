@@ -49,7 +49,15 @@ export default function ChatbotWidget() {
     setLoading(true)
 
     try {
-      const res = await sendMessage(text)
+      // İlk denemede hata alınırsa 2 saniye bekleyip bir kez daha dene
+      let res
+      try {
+        res = await sendMessage(text)
+      } catch (firstErr) {
+        console.warn('chatbot_first_attempt_failed, retrying...', firstErr?.response?.status)
+        await new Promise(r => setTimeout(r, 2000))
+        res = await sendMessage(text)
+      }
       setMessages(prev => [
         ...prev,
         {

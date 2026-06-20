@@ -126,38 +126,51 @@ public class ChatbotService {
         String now = TIME_FMT.format(Instant.now());
 
         // Zone yoğunlukları
-        List<Zone> zones = zoneRepository.findByStatus(ZoneStatus.ACTIVE);
-        Map<Long, Float> densityMap = buildDensityMap();
+        List<Zone> zones = Collections.emptyList();
+        try {
+            zones = zoneRepository.findByStatus(ZoneStatus.ACTIVE);
+        } catch (Exception e) {
+            log.warn("Zone listesi çekilemedi: {}", e.getMessage());
+        }
+
+        Map<Long, Float> densityMap = Collections.emptyMap();
+        try {
+            densityMap = buildDensityMap();
+        } catch (Exception e) {
+            log.warn("Yoğunluk verisi çekilemedi: {}", e.getMessage());
+        }
+
+        final Map<Long, Float> dm = densityMap;
 
         List<ChatContext.ZoneInfo> hotZones = zones.stream()
                 .filter(z -> {
-                    Float d = densityMap.get(z.getZoneId());
+                    Float d = dm.get(z.getZoneId());
                     return d != null && d >= 0.60f;
                 })
-                .sorted(Comparator.comparing((Zone z) -> densityMap.getOrDefault(z.getZoneId(), 0f)).reversed())
+                .sorted(Comparator.comparing((Zone z) -> dm.getOrDefault(z.getZoneId(), 0f)).reversed())
                 .limit(5)
                 .map(z -> new ChatContext.ZoneInfo(
                         z.getZoneName(),
                         TYPE_TR.getOrDefault(z.getType(), z.getType().name()),
-                        Math.round(densityMap.get(z.getZoneId()) * 100)))
+                        Math.round(dm.get(z.getZoneId()) * 100)))
                 .toList();
 
         List<ChatContext.ZoneInfo> quietZones = zones.stream()
                 .filter(z -> {
-                    Float d = densityMap.get(z.getZoneId());
+                    Float d = dm.get(z.getZoneId());
                     return d != null && d < 0.40f;
                 })
-                .sorted(Comparator.comparing(z -> densityMap.getOrDefault(z.getZoneId(), 1f)))
+                .sorted(Comparator.comparing(z -> dm.getOrDefault(z.getZoneId(), 1f)))
                 .limit(5)
                 .map(z -> new ChatContext.ZoneInfo(
                         z.getZoneName(),
                         TYPE_TR.getOrDefault(z.getType(), z.getType().name()),
-                        Math.round(densityMap.get(z.getZoneId()) * 100)))
+                        Math.round(dm.get(z.getZoneId()) * 100)))
                 .toList();
 
         int avgPct = (int) zones.stream()
-                .filter(z -> densityMap.containsKey(z.getZoneId()))
-                .mapToDouble(z -> densityMap.get(z.getZoneId()))
+                .filter(z -> dm.containsKey(z.getZoneId()))
+                .mapToDouble(z -> dm.get(z.getZoneId()))
                 .average()
                 .orElse(0.0) * 100;
 
