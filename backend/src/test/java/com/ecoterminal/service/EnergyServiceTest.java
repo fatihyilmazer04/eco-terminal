@@ -110,6 +110,7 @@ class EnergyServiceTest {
 
         when(metricRepository.findLatestPerZone()).thenReturn(List.of(metric));
         when(occupancyRepository.findLatestPerZone()).thenReturn(List.of(reading));
+        when(zoneRepository.findByStatusOrderByZoneNameAsc(ZoneStatus.ACTIVE)).thenReturn(List.of(testZone));
         when(zoneRepository.findById(1L)).thenReturn(Optional.of(testZone));
 
         // when
