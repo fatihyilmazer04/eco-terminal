@@ -31,6 +31,17 @@ class HuggingFaceClient:
         """Modeli belleğe yükle. Uygulama başlangıcında bir kez çağrılır."""
         if self._loaded:
             return
+        import os
+        # Yerel fine-tuned model varsa onu yükle, yoksa HF Hub'dan indir
+        local_merged = os.path.join(
+            os.path.dirname(__file__), "..", "..", "fine_tune", "merged"
+        )
+        local_merged = os.path.normpath(local_merged)
+        if os.path.isdir(local_merged) and os.path.exists(
+            os.path.join(local_merged, "config.json")
+        ):
+            logger.info("hf_model_local_found path=%s", local_merged)
+            self.model_id = local_merged
         logger.info("hf_model_loading model=%s device=%s", self.model_id, self.device)
 
         self._tokenizer = AutoTokenizer.from_pretrained(
