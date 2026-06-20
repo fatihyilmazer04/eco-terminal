@@ -102,8 +102,8 @@ async def chat(req: ChatRequest) -> ChatResponse:
     else:
         context = RetrievedContext()
 
-    # 3. Build prompt
-    prompt = _prompt_builder.build(intent_result, context)
+    # 3. Build prompt (req ile kullanıcıya özgü veriler de dahil edilir)
+    prompt = _prompt_builder.build(intent_result, context, req=req)
     logger.debug("prompt_built length=%d", len(prompt))
 
     # 4. Call local HuggingFace model (with smart template fallback)

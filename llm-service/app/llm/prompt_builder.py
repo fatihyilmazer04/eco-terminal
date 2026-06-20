@@ -1,123 +1,172 @@
-"""Build intent-aware Gemini prompts.
+"""Intent-aware prompt builder for local HuggingFace model.
 
-The prompt is the most important piece of RAG — it tells Gemini:
-    1. Its role (helpful airport assistant)
-    2. Constraints (Turkish, concise, no hallucination)
-    3. Retrieved context (facts + live data)
-    4. User's actual question
+Combines:
+  1. System role + constraints
+  2. User-specific context from Java backend (flights, eco points, zones)
+  3. RAG-retrieved context (facts, route, heatmap)
+  4. The actual question
 """
-from app.intent import IntentLabel, IntentResult
+from typing import Optional, List, Dict, Any
+
+from app.intent import IntentResult
 from app.rag.retriever import RetrievedContext
 
 
-_SYSTEM_PROMPT = """Sen Eco-Terminal havalimanı asistanısın. Görevin yolcuların
-sorularını yanıtlamak: rota önerme, uçuş bilgisi, yoğunluk durumu, eco-puan,
-genel terminal bilgileri.
+_SYSTEM_PROMPT = """Sen Eco-Terminal havalimanı asistanısın. Yolcuların sorularını Türkçe yanıtlarsın.
 
 KURALLAR:
-- Türkçe cevap ver, samimi ve profesyonel ol.
-- 3-5 cümleden uzun yazma — yolcular kısa cevap ister.
-- Sadece sağlanan veriyi kullan, uydurma.
-- Eğer veri yetersizse "bu bilgiye şu an erişemiyorum" de.
-- Asla iletişim bilgisi, telefon numarası uydurma.
+- Kısa ve net cevap ver (maksimum 3-4 cümle).
+- Sadece aşağıda verilen verileri kullan, uydurma.
+- Veri yoksa "Bu bilgiye şu an erişemiyorum." de.
 - Emoji KULLANMA.
-- Rota verirken adımları sırayla say: "1. ... 2. ..." formatında.
+- Telefon numarası veya iletişim bilgisi uydurma.
 """
 
 
 class PromptBuilder:
-    """Compose final prompt from intent + retrieved context."""
+    """Compose final prompt from intent + retrieved context + request context."""
 
-    def build(self, intent_result: IntentResult, context: RetrievedContext) -> str:
-        """Returns full prompt ready to send to Gemini."""
-        sections = [_SYSTEM_PROMPT, ""]
+    def build(
+        self,
+        intent_result: IntentResult,
+        context: RetrievedContext,
+        req=None,  # ChatRequest — kullanıcıya özgü veriler
+    ) -> str:
+        sections = [_SYSTEM_PROMPT.strip(), ""]
 
-        # --- Retrieved context block ---
-        sections.append("BAGLAN:")
-
-        if context.facts:
-            sections.append("Terminal Bilgileri:")
-            for i, fact in enumerate(context.facts, 1):
-                sections.append(f"  {i}. {fact.text}")
+        # ── Kullanıcıya özgü veriler (Java backend'den) ────────────────────────
+        user_section = self._build_user_section(req)
+        if user_section:
+            sections.append("KULLANICI BİLGİLERİ:")
+            sections.append(user_section)
             sections.append("")
 
-        if context.route_data:
-            sections.append("Onerilen Rota (Dijkstra hesaplamasi):")
-            sections.append(self._format_route(context.route_data))
+        # ── RAG context ────────────────────────────────────────────────────────
+        rag_section = self._build_rag_section(context)
+        if rag_section:
+            sections.append("TERMINAL VERİLERİ:")
+            sections.append(rag_section)
             sections.append("")
 
-        if context.flight_data:
-            sections.append("Ucus Bilgisi:")
-            sections.append(self._format_flight(context.flight_data))
-            sections.append("")
-
-        if context.zone_status:
-            sections.append("Zone Durumu:")
-            sections.append(self._format_zone(context.zone_status))
-            sections.append("")
-
-        if context.heatmap:
-            sections.append("Genel Yogunluk Haritasi:")
-            sections.append(self._format_heatmap(context.heatmap))
-            sections.append("")
-
-        # --- Intent + entities ---
-        sections.append(f"Tespit edilen niyet: {intent_result.intent.value}")
-        if intent_result.entities:
-            sections.append(f"Cikarilan bilgiler: {intent_result.entities}")
+        # ── Soru ──────────────────────────────────────────────────────────────
+        sections.append(f"YOLCUNUN SORUSU: {intent_result.raw_message}")
         sections.append("")
-
-        # --- The actual question ---
-        sections.append(f"YOLCU SORUSU: {intent_result.raw_message}")
-        sections.append("")
-        sections.append("CEVABIN:")
+        sections.append("CEVAP:")
 
         return "\n".join(sections)
 
-    # ---- Formatters ----
+    # ── Kullanıcı verisi ───────────────────────────────────────────────────────
 
-    def _format_route(self, route_data: dict) -> str:
-        """Format Dijkstra output as readable text."""
-        alternatives = route_data.get("alternatives", [])
-        if not alternatives:
-            return "  (rota bulunamadi)"
+    def _build_user_section(self, req) -> str:
+        if req is None:
+            return ""
 
         lines = []
-        for alt in alternatives[:3]:
-            strategy = alt.get("strategy", "?")
-            walk_sec = alt.get("totalWalkSeconds", 0)
-            walk_min = round(walk_sec / 60.0, 1)
-            dist = alt.get("totalDistanceMeters", 0)
-            density = alt.get("avgDensity", 0)
-            steps = alt.get("steps", [])
-            step_names = " -> ".join(s.get("zoneName", "?") for s in steps)
 
-            lines.append(
-                f"  * {strategy}: {step_names} "
-                f"({walk_min} dk, {dist}m, ort. yogunluk %{int(density * 100)})"
-            )
+        # Eco puan
+        if getattr(req, "eco_points", None) is not None:
+            tier = getattr(req, "tier_level", "GREEN") or "GREEN"
+            lines.append(f"  Eco-Puan: {req.eco_points} ({tier} üye)")
+
+        # Okunmamış bildirim
+        unread = getattr(req, "unread_notification_count", None)
+        if unread:
+            lines.append(f"  Okunmamış bildirim: {unread}")
+
+        # Aktif uçuşlar
+        flights = getattr(req, "user_flights", None)
+        if flights:
+            lines.append("  Aktif uçuşlar:")
+            for f in flights:
+                code = f.get("code", "?")
+                dest = f.get("destination", "?")
+                dep  = f.get("departure_time", "?")
+                gate = f.get("gate", "Henüz atanmadı")
+                stat = f.get("status", "?")
+                lines.append(f"    - {code} → {dest} | Kalkış: {dep} | Kapı: {gate} | Durum: {stat}")
+        else:
+            lines.append("  Aktif uçuş bulunamadı.")
+
+        # Yoğun bölgeler
+        hot = getattr(req, "hot_zones", None)
+        if hot:
+            lines.append("  Yoğun bölgeler:")
+            for z in hot[:3]:
+                lines.append(f"    - {z.get('name','?')} (%{z.get('density_pct',0)} dolu)")
+
+        # Sakin bölgeler
+        quiet = getattr(req, "quiet_zones", None)
+        if quiet:
+            lines.append("  Sakin bölgeler:")
+            for z in quiet[:3]:
+                lines.append(f"    - {z.get('name','?')} (%{z.get('density_pct',0)} dolu)")
+
+        # Ortalama doluluk
+        avg = getattr(req, "avg_density_pct", None)
+        if avg is not None and avg >= 0:
+            lines.append(f"  Terminal ortalama doluluk: %{avg}")
+
+        return "\n".join(lines)
+
+    # ── RAG context ────────────────────────────────────────────────────────────
+
+    def _build_rag_section(self, context: RetrievedContext) -> str:
+        lines = []
+
+        if context.facts:
+            lines.append("  Bilgi tabanı:")
+            for fact in context.facts[:5]:
+                lines.append(f"    - {fact.text}")
+
+        if context.route_data:
+            lines.append("  Önerilen rota:")
+            lines.append(self._format_route(context.route_data))
+
+        if context.flight_data:
+            lines.append("  Uçuş bilgisi:")
+            lines.append(self._format_flight(context.flight_data))
+
+        if context.zone_status:
+            lines.append("  Zone durumu:")
+            lines.append(self._format_zone(context.zone_status))
+
+        if context.heatmap:
+            lines.append("  Yoğunluk haritası:")
+            lines.append(self._format_heatmap(context.heatmap))
+
+        return "\n".join(lines)
+
+    # ── Formatters ─────────────────────────────────────────────────────────────
+
+    def _format_route(self, route_data: dict) -> str:
+        alternatives = route_data.get("alternatives", [])
+        if not alternatives:
+            return "    (rota bulunamadı)"
+        lines = []
+        for alt in alternatives[:2]:
+            strategy = alt.get("strategy", "?")
+            walk_min = round(alt.get("totalWalkSeconds", 0) / 60.0, 1)
+            steps = alt.get("steps", [])
+            step_names = " → ".join(s.get("zoneName", "?") for s in steps)
+            lines.append(f"    {strategy}: {step_names} ({walk_min} dk)")
         return "\n".join(lines)
 
     def _format_flight(self, flight: dict) -> str:
         code = flight.get("flightCode", "?")
         dest = flight.get("destination", "?")
-        dep = flight.get("departureTime", "?")
+        dep  = flight.get("departureTime", "?")
         gate = flight.get("gate", "?")
         status = flight.get("status", "?")
-        return f"  * {code} -> {dest} | Kalkis: {dep} | Kapi: {gate} | Durum: {status}"
+        return f"    {code} → {dest} | Kalkış: {dep} | Kapı: {gate} | Durum: {status}"
 
     def _format_zone(self, zone: dict) -> str:
-        name = zone.get("zoneName", "?")
+        name    = zone.get("zoneName", "?")
         density = zone.get("densityPct", 0)
-        level = zone.get("densityLevel", "?")
-        return f"  * {name}: %{density} doluluk ({level})"
+        level   = zone.get("densityLevel", "?")
+        return f"    {name}: %{density} ({level})"
 
     def _format_heatmap(self, zones: list) -> str:
         lines = []
-        for z in zones[:8]:
-            name = z.get("zoneName", "?")
-            density = z.get("densityPct", 0)
-            lines.append(f"  * {name}: %{density}")
-        if len(zones) > 8:
-            lines.append(f"  * ... ve {len(zones) - 8} zone daha")
+        for z in zones[:6]:
+            lines.append(f"    - {z.get('zoneName','?')}: %{z.get('densityPct',0)}")
         return "\n".join(lines)
