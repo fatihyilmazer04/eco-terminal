@@ -14,15 +14,12 @@ python-dotenv==1.0.1
 # Production server
 gunicorn==22.0.0
 
-# Yerel HuggingFace model inference
-torch>=2.2.0
-transformers>=4.45.0
-accelerate>=0.30.0
-
-
-# DistilBERT intent classifier (Step 4.2)
-# torch/transformers isteğe bağlı — yoksa rule-based fallback devreye girer.
-# Render free plan 512 MB sınırı nedeniyle production'da yüklenmez.
-# torch>=2.1.0
-# transformers==4.40.0
+# Yerel HuggingFace / DistilBERT model inference (OPSİYONEL)
+# torch CPU-only versiyonu ayrı index URL gerektirir; Dockerfile'da yönetilir.
+# Yüklenmezse distilbert_classifier.py otomatik olarak rule-based fallback'e geçer.
+# Docker build'de CUDA kütüphaneleri (~1.5 GB) indirilmesini önlemek için
+# bu satırlar yorum satırı bırakılmıştır.
+# torch==2.3.1+cpu      # CPU-only: Dockerfile'daki pip install adımında yükle
+# transformers==4.45.0
+# accelerate==0.30.0
 # tokenizers==0.19.1

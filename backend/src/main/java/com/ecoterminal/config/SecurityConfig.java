@@ -71,7 +71,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/actuator/prometheus").permitAll()
 
-                        // Swagger / OpenAPI
+                        // Swagger UI + OpenAPI spec — herkese açık
+                        // (Asıl koruma API endpoint seviyesinde JWT ile sağlanıyor)
                         .requestMatchers(
                                 "/swagger-ui/**", "/swagger-ui.html",
                                 "/api-docs/**", "/v3/api-docs/**"

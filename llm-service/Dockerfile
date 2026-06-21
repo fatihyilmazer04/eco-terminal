@@ -9,7 +9,15 @@ WORKDIR /app
 
 # Önce requirements (Docker layer cache için)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Ana bağımlılıklar (hafif — ML kütüphaneleri dahil değil)
+RUN pip install --no-cache-dir --timeout 120 --retries 5 -r requirements.txt
+
+# OPSİYONEL: DistilBERT için CPU-only torch (GPU/CUDA kütüphaneleri dahil değil ~250 MB)
+# Aktifleştirmek için aşağıdaki satırı yorum dışına alın:
+# RUN pip install --no-cache-dir --timeout 120 torch==2.3.1+cpu \
+#       --index-url https://download.pytorch.org/whl/cpu && \
+#     pip install --no-cache-dir --timeout 120 transformers==4.45.0 accelerate==0.30.0
 
 # Uygulama kodu
 COPY ./app ./app

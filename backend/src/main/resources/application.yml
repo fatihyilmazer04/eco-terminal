@@ -147,15 +147,15 @@ app:
 demo:
   refresh-flights: true
 
-# ── Swagger / OpenAPI (Faz 8) ────────────────────────────────────────────────
+# ── Swagger / OpenAPI ────────────────────────────────────────────────────────
+# Erişim: Yalnızca ADMIN — SecurityConfig.java > hasRole("ADMIN")
+# Swagger UI : /swagger-ui/index.html  (JWT ile giriş yaptıktan sonra)
+# OpenAPI JSON: /api-docs
 springdoc:
   api-docs:
     path: /api-docs
   swagger-ui:
-    path: /swagger-ui.html
+    path: /swagger-ui/index.html
     operationsSorter: method
     tagsSorter: alpha
-  info:
-    title: Eco-Terminal API
-    description: Akıllı Havalimanı Yoğunluk ve Enerji Yönetim Sistemi
-    version: 1.0.0
+    disable-swagger-default-url: true
