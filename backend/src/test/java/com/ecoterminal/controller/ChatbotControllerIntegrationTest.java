@@ -70,15 +70,13 @@ class ChatbotControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("ask_withBlankMessage_returns200WithDefaultReply")
-    void ask_withBlankMessage_returns200WithDefaultReply() {
+    @DisplayName("ask_withBlankMessage_returns400")
+    void ask_withBlankMessage_returns400() {
+        // ChatbotRequest.message @NotBlank — boş mesaj validation hatası → 400
         Map<String, String> body = Map.of("message", "   ");
         ResponseEntity<Map> r = restTemplate.exchange(
                 baseUrl() + "/api/chatbot/ask", HttpMethod.POST,
                 new HttpEntity<>(body, bearerJsonHeaders(userToken)), Map.class);
-        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> data = (Map<String, Object>) r.getBody().get("data");
-        assertThat(data.get("reply").toString()).isEqualTo("Lütfen bir soru yazın.");
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 }

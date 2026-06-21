@@ -207,6 +207,32 @@
                     </excludes>
                 </configuration>
             </plugin>
+
+            <!-- JaCoCo — Test Coverage Raporu -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.11</version>
+                <executions>
+                    <!-- test öncesi agent'ı başlat -->
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals><goal>prepare-agent</goal></goals>
+                    </execution>
+                    <!-- test sonrası HTML/XML rapor üret -->
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals><goal>report</goal></goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <!-- Test yardımcı sınıfları, generated kodlar hariç -->
+                    <excludes>
+                        <exclude>com/ecoterminal/EcoTerminalApplication.class</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 

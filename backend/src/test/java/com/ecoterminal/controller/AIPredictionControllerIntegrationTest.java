@@ -91,8 +91,8 @@ class AIPredictionControllerIntegrationTest extends BaseIntegrationTest {
         ResponseEntity<Map> r = restTemplate.exchange(
                 baseUrl() + "/api/ai/predictions/refresh", HttpMethod.POST,
                 new HttpEntity<>(bearerHeaders(adminToken)), Map.class);
-        // AI servisi olmayabilir → 200 veya hata toleranslı
-        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        // AI servisi test ortamında çalışmıyor → 200 veya 503 kabul edilir
+        assertThat(r.getStatusCode()).isIn(HttpStatus.OK, HttpStatus.SERVICE_UNAVAILABLE);
     }
 
     @Test
