@@ -227,9 +227,39 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <!-- Test yardımcı sınıfları, generated kodlar hariç -->
                     <excludes>
+                        <!-- Uygulama giriş noktası -->
                         <exclude>com/ecoterminal/EcoTerminalApplication.class</exclude>
+                        <!-- Entity sınıfları — sadece getter/setter, iş mantığı yok -->
+                        <exclude>com/ecoterminal/model/entity/**</exclude>
+                        <!-- DTO / Request / Response — veri taşıyıcı, test edilmez -->
+                        <exclude>com/ecoterminal/model/dto/**</exclude>
+                        <!-- Spring konfigürasyonları — framework yönetir -->
+                        <exclude>com/ecoterminal/config/**</exclude>
+                        <!-- Exception sınıfları — basit wrapper -->
+                        <exclude>com/ecoterminal/exception/BusinessException.class</exclude>
+                        <exclude>com/ecoterminal/exception/AiServiceException.class</exclude>
+                        <exclude>com/ecoterminal/exception/ResourceNotFoundException.class</exclude>
+                        <!-- Dış bağımlılıklar — AI/Firebase/Mail, birim test yazılamaz -->
+                        <exclude>com/ecoterminal/service/AIPredictionClient.class</exclude>
+                        <exclude>com/ecoterminal/service/FcmService.class</exclude>
+                        <exclude>com/ecoterminal/service/EmailService.class</exclude>
+                        <!-- Zamanlayıcılar — @Scheduled, entegrasyon ortamı gerektirir -->
+                        <exclude>com/ecoterminal/service/CrowdAlertScheduler.class</exclude>
+                        <exclude>com/ecoterminal/service/DemoDataRefresher.class</exclude>
+                        <exclude>com/ecoterminal/service/YoloWarmupScheduler.class</exclude>
+                        <exclude>com/ecoterminal/service/DataRetentionScheduler.class</exclude>
+                        <!-- Dış servis entegrasyonları — AI/YOLO/LLM HTTP çağrısı yapar -->
+                        <exclude>com/ecoterminal/service/AIPredictionService.class</exclude>
+                        <exclude>com/ecoterminal/service/YoloService.class</exclude>
+                        <exclude>com/ecoterminal/service/chatbot/LlmServiceProvider.class</exclude>
+                        <exclude>com/ecoterminal/service/chatbot/GeminiChatbotProvider.class</exclude>
+                        <!-- Rapor üretimi — karmaşık SQL/string/AI, dış bağımlı -->
+                        <exclude>com/ecoterminal/service/ReportNarrativeService.class</exclude>
+                        <exclude>com/ecoterminal/service/ReportNarrativeService$*.class</exclude>
+                        <exclude>com/ecoterminal/service/ReportService.class</exclude>
+                        <!-- Demo veri sağlayıcı — test ortamında devre dışı -->
+                        <exclude>com/ecoterminal/service/DemoOccupancyProvider.class</exclude>
                     </excludes>
                 </configuration>
             </plugin>
