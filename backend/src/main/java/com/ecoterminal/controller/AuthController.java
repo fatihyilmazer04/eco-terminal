@@ -21,6 +21,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -49,13 +50,17 @@ public class AuthController {
     // In-memory fallback: Redis unavailable durumunda
     private final ConcurrentHashMap<String, Bucket> fallbackBuckets = new ConcurrentHashMap<>();
 
-    private static final Supplier<BucketConfiguration> LOGIN_BUCKET_CONFIG = () ->
-            BucketConfiguration.builder()
-                    .addLimit(Bandwidth.builder()
-                            .capacity(10)
-                            .refillGreedy(10, Duration.ofMinutes(1))
-                            .build())
-                    .build();
+    @Value("${app.rate-limit.login.capacity:10}")
+    private int loginRateCapacity;
+
+    private Supplier<BucketConfiguration> loginBucketConfig() {
+        return () -> BucketConfiguration.builder()
+                .addLimit(Bandwidth.builder()
+                        .capacity(loginRateCapacity)
+                        .refillGreedy(loginRateCapacity, Duration.ofMinutes(1))
+                        .build())
+                .build();
+    }
 
     // ── POST /api/auth/login ───────────────────────────────────────────────
 
@@ -145,18 +150,19 @@ public class AuthController {
             try {
                 byte[] key = ("login_rate:" + clientIp).getBytes(StandardCharsets.UTF_8);
                 Bucket bucket = proxyManager.builder()
-                        .build(key, LOGIN_BUCKET_CONFIG);
+                        .build(key, loginBucketConfig());
                 return bucket.tryConsume(1);
             } catch (Exception e) {
                 log.warn("Redis rate limiter hatası, in-memory fallback kullanılıyor: {}", e.getMessage());
             }
         }
         // In-memory fallback
+        int cap = loginRateCapacity;
         Bucket bucket = fallbackBuckets.computeIfAbsent(clientIp, ip ->
                 Bucket.builder()
                         .addLimit(Bandwidth.builder()
-                                .capacity(10)
-                                .refillGreedy(10, Duration.ofMinutes(1))
+                                .capacity(cap)
+                                .refillGreedy(cap, Duration.ofMinutes(1))
                                 .build())
                         .build()
         );

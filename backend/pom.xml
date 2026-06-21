@@ -20,6 +20,8 @@
     <properties>
         <java.version>21</java.version>
         <jjwt.version>0.12.5</jjwt.version>
+        <!-- Varsayılan: IntegrationTest sınıfları hariç — mvn test -Dintegration.test.exclude="" ile geçersiz kılınır -->
+        <integration.test.exclude>**/*IntegrationTest.java</integration.test.exclude>
     </properties>
 
     <dependencies>
@@ -153,6 +155,13 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Apache HttpClient 5 — TestRestTemplate'in PATCH metodunu desteklemesi için -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- TestContainers — Faz 8 integration testleri için -->
         <dependency>
             <groupId>org.testcontainers</groupId>
@@ -169,12 +178,20 @@
     <build>
         <plugins>
             <!-- Surefire: varsayılan 'mvn test' sadece unit testleri çalıştırır -->
-            <!-- Integration testleri: mvn test -Dgroups=integration -->
+            <!--
+                Unit testler (default): mvn test
+                Integration testler   : mvn test -Dskip.unit.tests=true
+                                        veya mvn test -Dtest="*IntegrationTest"
+                Tüm testler           : mvn test -DexcludeIntegration=false
+            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <excludedGroups>integration</excludedGroups>
+                    <!-- Varsayılan: IntegrationTest sınıfları hariç tutulur -->
+                    <excludes>
+                        <exclude>${integration.test.exclude}</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
 

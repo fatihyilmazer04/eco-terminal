@@ -42,8 +42,12 @@ logger.info("intent_classifier_mode=%s classifier=%s", settings.intent_classifie
 _kb = KnowledgeBase()
 _backend = BackendClient()
 _retriever = Retriever(_kb, _backend)
-_hf = HuggingFaceClient()
-_hf.load()   # Model startup'ta bir kez yüklenir (~30-60s)
+if HuggingFaceClient is not None:
+    _hf = HuggingFaceClient()
+    _hf.load()   # Model startup'ta bir kez yüklenir (~30-60s)
+else:
+    _hf = None
+    logger.warning("torch/transformers yüklü değil — HuggingFace LLM devre dışı, template fallback aktif")
 _prompt_builder = PromptBuilder()
 
 
@@ -108,7 +112,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
 
     # 4. Call local HuggingFace model (with smart template fallback)
     reply: str
-    if _hf.is_configured():
+    if _hf is not None and _hf.is_configured():
         hf_reply = await _hf.generate(prompt)
         if hf_reply:
             reply = hf_reply
