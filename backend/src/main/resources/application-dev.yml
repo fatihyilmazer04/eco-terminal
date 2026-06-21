@@ -1,0 +1,30 @@
+# =============================================================================
+# Dev profili — SPRING_PROFILES_ACTIVE=dev ile devreye girer
+# Bu dosyadaki değerler application.yml'i override eder.
+# =============================================================================
+
+spring:
+  jpa:
+    show-sql: true          # SQL sorgularını konsola yaz
+    properties:
+      hibernate:
+        format_sql: true    # SQL'i okunabilir formatta göster
+
+# Log seviyelerini dev için yükselt
+logging:
+  level:
+    com.ecoterminal: DEBUG
+    org.springframework.security: DEBUG      # JWT/auth sorunlarını debug etmek için
+    org.flywaydb: DEBUG                      # Migration detaylarını görmek için
+    org.hibernate.SQL: DEBUG                 # Hibernate SQL (show-sql ile birlikte)
+    org.hibernate.type.descriptor.sql: TRACE # Bind parametrelerini görmek için
+
+# Demo veri tazeleme aktif (dev ortamında test verisi istenir)
+demo:
+  refresh-flights: true
+
+app:
+  demo:
+    # true yapılırsa DB'den okuma yerine sabit heatmap değerleri kullanılır
+    # AI servisi veya YOLOv8 yokken UI'ı test etmek için kullanışlı
+    fixed-heatmap: false
