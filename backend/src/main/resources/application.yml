@@ -61,7 +61,7 @@ resend:
 jwt:
   # Üretimde mutlaka güçlü, rastgele 256-bit Base64 secret kullanın
   secret: ${JWT_SECRET:eco-terminal-super-secret-key-must-be-at-least-256-bits-long-for-hs256}
-  access-token-expiration: 900000        # 15 dakika (ms)
+  access-token-expiration: 7200000       # 2 saat (JMeter testi için geçici)
   refresh-token-expiration: 604800000    # 7 gün (ms)
 
 # ── CORS ────────────────────────────────────────────────────────────────────
