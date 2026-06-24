@@ -1,6 +1,7 @@
 package com.ecoterminal.model.dto;
 
 import com.ecoterminal.model.entity.EnvironmentalMetric;
+import com.ecoterminal.model.entity.Zone;
 
 import java.time.Instant;
 
@@ -37,6 +38,24 @@ public record EnergyResponse(
             densityPct,
             computeStatus(densityPct, m.getEnergyKwh()),
             m.getRecordedAt()
+        );
+    }
+
+    /**
+     * environmental_metrics kaydı olmayan zone'lar için fabrika metodu.
+     * kWh ve temp, çağıran servis tarafından doluluktan türetilerek sağlanır.
+     * lightingLux ve recordedAt null kalır (sensör verisi yok).
+     */
+    public static EnergyResponse fromZone(Zone zone, float densityPct, float kwh, float temp) {
+        return new EnergyResponse(
+            zone.getZoneId(),
+            zone.getZoneName(),
+            kwh,
+            temp,
+            null,
+            densityPct,
+            computeStatus(densityPct, kwh),
+            null
         );
     }
 }

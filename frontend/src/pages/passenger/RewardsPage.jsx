@@ -18,18 +18,44 @@ const TIER_BAR_COLOR = { GREEN: 'green', GOLD: 'gold', PLATINUM: 'purple' }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Ödül tipi → kullanım açıklaması
+const REWARD_USAGE_DESC = {
+  COFFEE:        'Bu kodu terminal içindeki kafede göstererek kahvenizi alabilirsiniz.',
+  LOUNGE_ACCESS: 'Bu kodu lounge girişinde göstererek erişim sağlayabilirsiniz.',
+  UPGRADE:       'Bu kodu check-in kontuarında göstererek koltuğunuzu yükseltebilirsiniz.',
+  DISCOUNT:      'Bu kodu duty-free kasasında göstererek indiriminizi kullanabilirsiniz.',
+  PRIORITY:      'Bu kodu kapı önünde göstererek öncelikli biniş hakkınızı kullanabilirsiniz.',
+}
+
+const TABS = [
+  { key: 'catalog',      label: '🎁 Ödül Kataloğu' },
+  { key: 'my-codes',     label: '🎫 Kodlarım'       },
+  { key: 'transactions', label: '📋 Geçmiş'          },
+]
+
 export default function RewardsPage() {
-  const { wallet, transactions, rewards, loading, error, spendPoints, refetch } = useLoyalty()
+  const { wallet, transactions, rewards, redemptions, loading, error, spendPoints } = useLoyalty()
+  const [activeTab, setActiveTab]       = useState('catalog')
   const [confirmReward, setConfirmReward] = useState(null)
-  const [spending, setSpending] = useState(false)
+  const [spending, setSpending]         = useState(false)
+  const [successResult, setSuccessResult] = useState(null) // { code, rewardTitle, rewardType, pointsSpent, remaining }
 
   // ── Ödül harca ──
   const handleSpend = async () => {
     if (!confirmReward) return
     setSpending(true)
     try {
-      await spendPoints(confirmReward.rewardId)
+      const data = await spendPoints(confirmReward.rewardId)
       setConfirmReward(null)
+      if (data?.redemptionCode) {
+        setSuccessResult({
+          code:        data.redemptionCode,
+          rewardTitle: data.rewardTitle ?? confirmReward.title,
+          rewardType:  confirmReward.rewardType,
+          pointsSpent: confirmReward.costPoints,
+          remaining:   data.remainingBalance,
+        })
+      }
     } finally {
       setSpending(false)
     }
@@ -38,7 +64,6 @@ export default function RewardsPage() {
   if (loading) return <PageSkeleton />
 
   const balance = wallet?.currentBalance ?? 0
-  const tier    = wallet?.tierLevel ?? 'GREEN'
 
   return (
     <div className="min-h-screen bg-gray-900 px-4 py-6 max-w-2xl mx-auto space-y-6">
@@ -53,51 +78,69 @@ export default function RewardsPage() {
       {/* ── Cüzdan özet kartı ── */}
       <WalletCard wallet={wallet} />
 
-      {/* ── Ödül Kataloğu ── */}
-      <section>
-        <h2 className="text-white font-bold text-base mb-3 flex items-center gap-2">
-          <span>🎁</span> Ödül Kataloğu
-        </h2>
+      {/* ── Tab Nav ── */}
+      <div className="flex gap-1 bg-gray-800/50 rounded-xl p-1">
+        {TABS.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors
+              ${activeTab === tab.key
+                ? 'bg-eco-green/20 text-eco-green border border-eco-green/30'
+                : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            {tab.label}
+            {tab.key === 'my-codes' && redemptions.length > 0 && (
+              <span className="ml-1 bg-eco-green text-gray-900 text-[9px] font-bold
+                               px-1.5 py-0.5 rounded-full align-middle">
+                {redemptions.length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
 
-        {rewards.length === 0 ? (
-          <div className="eco-card text-center py-10">
-            <p className="text-gray-400">Şu an aktif ödül bulunmuyor.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {rewards.map(reward => (
-              <RewardCard
-                key={reward.rewardId}
-                reward={reward}
-                balance={balance}
-                onSelect={() => setConfirmReward(reward)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      {/* ── Tab İçerikleri ── */}
+      {activeTab === 'catalog' && (
+        <>
+          {rewards.length === 0 ? (
+            <div className="bg-gray-800 rounded-xl border border-gray-700 text-center py-10">
+              <p className="text-gray-400">Şu an aktif ödül bulunmuyor.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {rewards.map(reward => (
+                <RewardCard
+                  key={reward.rewardId}
+                  reward={reward}
+                  balance={balance}
+                  onSelect={() => setConfirmReward(reward)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
-      {/* ── Nasıl Kazanılır? ── */}
-      <EarnGuide />
+      {activeTab === 'my-codes' && (
+        <MyCodesTab redemptions={redemptions} />
+      )}
 
-      {/* ── İşlem Geçmişi ── */}
-      <section>
-        <h2 className="text-white font-bold text-base mb-3 flex items-center gap-2">
-          <span>📋</span> İşlem Geçmişi
-        </h2>
-
-        {transactions.length === 0 ? (
-          <div className="eco-card text-center py-8">
-            <p className="text-gray-500 text-sm">Henüz hiç işlem yok.</p>
-          </div>
-        ) : (
-          <div className="bg-gray-800 rounded-xl border border-gray-700 divide-y divide-gray-700/60">
-            {transactions.map(tx => (
-              <TransactionRow key={tx.transId} tx={tx} />
-            ))}
-          </div>
-        )}
-      </section>
+      {activeTab === 'transactions' && (
+        <>
+          {transactions.length === 0 ? (
+            <div className="bg-gray-800 rounded-xl border border-gray-700 text-center py-8">
+              <p className="text-gray-500 text-sm">Henüz hiç işlem yok.</p>
+            </div>
+          ) : (
+            <div className="bg-gray-800 rounded-xl border border-gray-700 divide-y divide-gray-700/60">
+              {transactions.map(tx => (
+                <TransactionRow key={tx.transId} tx={tx} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
       {/* ── Onay modal'ı ── */}
       {confirmReward && (
@@ -107,6 +150,14 @@ export default function RewardsPage() {
           loading={spending}
           onConfirm={handleSpend}
           onCancel={() => setConfirmReward(null)}
+        />
+      )}
+
+      {/* ── Başarı modal'ı (kod göster) ── */}
+      {successResult && (
+        <RedemptionSuccessModal
+          result={successResult}
+          onClose={() => setSuccessResult(null)}
         />
       )}
     </div>
@@ -201,29 +252,71 @@ function RewardCard({ reward, balance, onSelect }) {
   )
 }
 
-function EarnGuide() {
-  const items = [
-    { action: '🗺 Eko-Rota Seç',       points: '+50' },
-    { action: '✈ Check-in Tamamla',    points: '+25' },
-    { action: '🛋 Lounge\'a Gir',       points: '+20' },
-    { action: '🌿 Eko Rota Kullan',     points: '+15' },
-    { action: '🧘 Sakin Alanda Bekle',  points: '+10' },
-  ]
+function MyCodesTab({ redemptions }) {
+  if (redemptions.length === 0) {
+    return (
+      <div className="bg-gray-800 rounded-xl border border-gray-700 text-center py-12">
+        <p className="text-4xl mb-3">🎫</p>
+        <p className="text-gray-300 font-semibold text-sm">Henüz hiç ödül kodunuz yok</p>
+        <p className="text-gray-500 text-xs mt-1">Ödül kataloğundan bir ödül alarak başlayın.</p>
+      </div>
+    )
+  }
 
   return (
-    <div className="bg-eco-green/5 border border-eco-green/20 rounded-xl p-4">
-      <p className="text-eco-green text-sm font-semibold mb-3">Nasıl Puan Kazanılır?</p>
-      <div className="space-y-2">
-        {items.map(item => (
-          <div key={item.action} className="flex items-center justify-between text-xs">
-            <span className="text-gray-300">{item.action}</span>
-            <span className="text-eco-green font-bold">{item.points}</span>
-          </div>
-        ))}
-      </div>
+    <div className="space-y-3">
+      {redemptions.map(item => (
+        <RedemptionCodeCard key={item.transId} item={item} />
+      ))}
     </div>
   )
 }
+
+function RedemptionCodeCard({ item }) {
+  const icon      = REWARD_ICON[item.rewardType] ?? DEFAULT_ICON
+  const usageDesc = REWARD_USAGE_DESC[item.rewardType] ?? 'Bu kodu ilgili kontuarda gösterin.'
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(item.redemptionCode).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }).catch(() => {})
+  }
+
+  return (
+    <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-3">
+      {/* Başlık satırı */}
+      <div className="flex items-center gap-3">
+        <div className={`w-9 h-9 rounded-xl border flex items-center justify-center text-lg flex-shrink-0 ${icon.bg}`}>
+          {icon.emoji}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-white text-sm font-semibold truncate">{item.rewardName}</p>
+          <p className="text-gray-500 text-[10px]">{item.timeAgo} · {item.pointsSpent} puan</p>
+        </div>
+      </div>
+
+      {/* Kod kutusu */}
+      <div className="flex items-center gap-2 bg-gray-900 border border-eco-green/20 rounded-lg px-3 py-2">
+        <span className="flex-1 font-mono text-eco-green text-xs font-bold tracking-wider truncate">
+          {item.redemptionCode}
+        </span>
+        <button
+          onClick={handleCopy}
+          className={`text-xs transition-colors flex-shrink-0 ${copied ? 'text-eco-green' : 'text-gray-400 hover:text-eco-green'}`}
+          title="Kopyala"
+        >
+          {copied ? '✓ Kopyalandı' : '📋'}
+        </button>
+      </div>
+
+      {/* Kullanım açıklaması */}
+      <p className="text-gray-500 text-[10px] leading-relaxed">{usageDesc}</p>
+    </div>
+  )
+}
+
 
 function TransactionRow({ tx }) {
   const isEarn = tx.transType === 'EARN'
@@ -285,6 +378,74 @@ function ConfirmModal({ reward, balance, loading, onConfirm, onCancel }) {
             {loading ? 'İşleniyor...' : 'Onayla'}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function RedemptionSuccessModal({ result, onClose }) {
+  const icon    = REWARD_ICON[result.rewardType] ?? DEFAULT_ICON
+  const usageDesc = REWARD_USAGE_DESC[result.rewardType] ?? 'Bu kodu ilgili kontuarda göstererek ödülünüzü kullanabilirsiniz.'
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(result.code).then(() => {
+      // toast zaten useLoyalty'de atıldı; sessizce geç
+    }).catch(() => {})
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-gray-800 rounded-2xl border border-gray-700 w-full max-w-sm shadow-2xl p-6 space-y-4">
+
+        {/* Başlık */}
+        <div className="text-center">
+          <div className="text-4xl mb-1">✅</div>
+          <p className="text-white font-bold text-lg">Ödül Alındı!</p>
+        </div>
+
+        {/* Ödül ikonu + adı */}
+        <div className="flex items-center gap-3 bg-gray-700/50 rounded-xl p-3">
+          <div className={`w-10 h-10 rounded-xl border flex items-center justify-center text-xl flex-shrink-0 ${icon.bg}`}>
+            {icon.emoji}
+          </div>
+          <p className="text-white font-semibold text-sm">{result.rewardTitle}</p>
+        </div>
+
+        {/* Kod kutusu */}
+        <div>
+          <p className="text-gray-400 text-xs mb-1.5">Kullanım Kodunuz</p>
+          <div className="flex items-center gap-2 bg-gray-900 border border-eco-green/30 rounded-xl px-4 py-3">
+            <span className="flex-1 font-mono text-eco-green font-bold tracking-widest text-sm">
+              {result.code}
+            </span>
+            <button
+              onClick={handleCopy}
+              className="text-gray-400 hover:text-eco-green transition-colors text-sm"
+              title="Kopyala"
+            >
+              📋
+            </button>
+          </div>
+        </div>
+
+        {/* Açıklama */}
+        <p className="text-gray-400 text-xs leading-relaxed text-center">
+          {usageDesc}
+        </p>
+
+        {/* Puan özeti */}
+        <div className="flex justify-between text-xs text-gray-500 border-t border-gray-700 pt-3">
+          <span>Harcanan: <span className="text-red-400 font-semibold">−{result.pointsSpent} puan</span></span>
+          <span>Kalan: <span className="text-eco-green font-semibold">{result.remaining} puan</span></span>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="w-full py-2.5 rounded-xl bg-eco-green text-gray-900 font-bold
+                     text-sm hover:bg-green-400 transition-colors"
+        >
+          Tamam
+        </button>
       </div>
     </div>
   )

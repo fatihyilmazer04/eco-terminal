@@ -21,4 +21,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Modifying
     @Query("UPDATE User u SET u.lastLogin = :loginTime WHERE u.userId = :userId")
     void updateLastLogin(@Param("userId") Long userId, @Param("loginTime") Instant loginTime);
+
+    /** Belirli zaman aralığında kayıt olan kullanıcı sayısı (dashboard için) */
+    long countByCreatedAtBetween(Instant start, Instant end);
 }

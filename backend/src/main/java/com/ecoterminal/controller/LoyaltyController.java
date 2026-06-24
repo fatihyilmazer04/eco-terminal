@@ -48,6 +48,13 @@ public class LoyaltyController {
                 loyaltyService.spendPoints(principal.getUserId(), request.rewardId())));
     }
 
+    /** GET /api/loyalty/my-redemptions — sahip olunan ödül kodları */
+    @GetMapping("/my-redemptions")
+    public ResponseEntity<ApiResponse<List<RedemptionResponse>>> getMyRedemptions(
+            @AuthenticationPrincipal UserPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.ok(loyaltyService.getMyRedemptions(principal.getUserId())));
+    }
+
     /** POST /api/loyalty/earn — aksiyon ile puan kazan (test endpoint) */
     @PostMapping("/earn")
     public ResponseEntity<ApiResponse<WalletResponse>> earn(

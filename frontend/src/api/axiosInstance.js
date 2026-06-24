@@ -23,6 +23,25 @@ axiosInstance.interceptors.request.use(
   (error) => Promise.reject(error),
 )
 
+// ── Refresh token race condition önleme ──────────────────────────────────────
+// Aynı anda birden fazla istek 401 alırsa hepsi bağımsız refresh denemez.
+// İlk istek refresh'i başlatır; diğerleri sıraya girer ve sonucu paylaşır.
+let isRefreshing = false
+let refreshQueue = [] // { resolve, reject }[]
+
+function processQueue(error, token = null) {
+  refreshQueue.forEach(({ resolve, reject }) => {
+    if (error) reject(error)
+    else resolve(token)
+  })
+  refreshQueue = []
+}
+
+function forceLogout() {
+  localStorage.clear()
+  window.location.href = '/login'
+}
+
 // Response interceptor — 401 alınırsa refresh token ile yenile
 axiosInstance.interceptors.response.use(
   (response) => response,
@@ -34,11 +53,23 @@ axiosInstance.interceptors.response.use(
 
       const refreshToken = localStorage.getItem('refreshToken')
       if (!refreshToken) {
-        // Refresh token yok → logout
-        localStorage.clear()
-        window.location.href = '/login'
+        forceLogout()
         return Promise.reject(error)
       }
+
+      // Başka bir refresh zaten uçuktaysa bu isteği kuyruğa al
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          refreshQueue.push({ resolve, reject })
+        })
+          .then((newToken) => {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`
+            return axiosInstance(originalRequest)
+          })
+          .catch(() => Promise.reject(error))
+      }
+
+      isRefreshing = true
 
       try {
         const res = await axios.post(
@@ -47,12 +78,25 @@ axiosInstance.interceptors.response.use(
         )
         const { accessToken } = res.data.data
         localStorage.setItem('accessToken', accessToken)
+
+        // Kuyruktaki tüm bekleyen istekleri yeni token ile serbest bırak
+        processQueue(null, accessToken)
+
         originalRequest.headers.Authorization = `Bearer ${accessToken}`
         return axiosInstance(originalRequest)
-      } catch {
-        localStorage.clear()
-        window.location.href = '/login'
-        return Promise.reject(error)
+      } catch (refreshError) {
+        // 401/403 → refresh token geçersiz/süresi dolmuş → logout zorunlu.
+        // 502/503/504/timeout → backend geçici kapalı (Render free plan cold start) →
+        //   logout yapma, polling bir sonraki turda token'ı tekrar yenilemeyi dener.
+        const refreshStatus = refreshError.response?.status
+        const isAuthFailure = refreshStatus === 401 || refreshStatus === 403
+
+        processQueue(refreshError, null)
+        if (isAuthFailure) forceLogout()
+
+        return Promise.reject(refreshError)
+      } finally {
+        isRefreshing = false
       }
     }
 

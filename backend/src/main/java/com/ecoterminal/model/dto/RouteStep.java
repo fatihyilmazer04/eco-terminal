@@ -11,5 +11,7 @@ public record RouteStep(
         String zoneName,
         String instruction,
         int estimatedWalkMinutes,
-        DensityLevel densityLevel
+        DensityLevel densityLevel,
+        Double posX,   // nullable — SVG merkez X% (posX + width/2)
+        Double posY    // nullable — SVG merkez Y% (posY + height/2)
 ) {}

@@ -1,0 +1,19 @@
+{
+  "test_accuracy": 0.859375,
+  "test_samples": 64,
+  "train_samples": 318,
+  "val_samples": 43,
+  "intents": [
+    "route_request",
+    "flight_info",
+    "crowd_query",
+    "loyalty_query",
+    "general_info",
+    "unknown"
+  ],
+  "model_base": "distilbert-base-multilingual-cased",
+  "epochs": 8,
+  "batch_size": 16,
+  "learning_rate": 5e-05,
+  "device": "cuda"
+}

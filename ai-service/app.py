@@ -38,12 +38,17 @@ app.register_blueprint(predict_bp)
 app.register_blueprint(crowd_bp)
 app.register_blueprint(energy_bp)
 
-# ── Startup Logu ─────────────────────────────────────────────────────────────
-@app.before_request
-def _startup():
-    pass  # her request öncesi çalışır, şu an boş
+# ── Model durumu logu (uygulama başlangıcında bir kez) ───────────────────────
+from model.xgboost_predictor import xgb_predictor
 
-logger.info("AI Service baslatildi, model: fallback (LSTM egitim verisi bekleniyor)")
+if xgb_predictor.is_available:
+    logger.info("AI Service başlatıldı — aktif model: XGBoost (Faz 2, yüksek doğruluk modu)")
+else:
+    logger.warning(
+        "AI Service başlatıldı — XGBoost dosyaları bulunamadı, "
+        "fallback modu aktif (ağırlıklı ortalama). "
+        "Volume mount kontrolü: ./ml-pipeline/models:/app/models:ro"
+    )
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":

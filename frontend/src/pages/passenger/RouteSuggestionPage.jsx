@@ -1,9 +1,12 @@
 import React, { useState } from 'react'
-import { useSearchParams, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useSuggestedRoute, useAlternatives } from '../../hooks/useFlights'
+import { useHeatmap } from '../../hooks/useHeatmap'
 import OccupancyCard from '../../components/OccupancyCard'
-import { loyaltyApi } from '../../api/loyaltyApi'
-import { ACTION_POINTS } from '../../hooks/useLoyalty'
+import AirportHeatmap from '../../components/AirportHeatmap'
+import QrScannerModal from '../../components/QrScannerModal'
+import { routeApi } from '../../api/routeApi'
+import { useLoyaltyContext } from '../../context/LoyaltyContext'
 import toast from 'react-hot-toast'
 
 const LEVEL_COLORS = {
@@ -20,53 +23,84 @@ const LEVEL_LABELS = {
   CRITICAL: 'Kritik',
 }
 
-function StepCard({ step }) {
+function StepCard({ step, isActive, isCompleted, journeyStarted, onCheckin, onQrScan, checkingIn }) {
   const isBusy = step.densityLevel === 'HIGH' || step.densityLevel === 'CRITICAL'
   const color  = LEVEL_COLORS[step.densityLevel] ?? '#9CA3AF'
   const label  = LEVEL_LABELS[step.densityLevel] ?? step.densityLevel
+  const hasMap = step.posX != null && step.posY != null
 
   return (
-    <div className={`
-      flex gap-4 p-4 rounded-xl border transition-colors
-      ${isBusy
-        ? 'bg-yellow-500/5 border-yellow-500/20'
-        : 'bg-gray-800 border-gray-700'}
-    `}>
-      {/* Numara çemberi */}
+    <div
+      className={`
+        flex gap-4 p-4 rounded-xl border transition-all
+        ${isCompleted
+          ? 'bg-eco-green/10 border-eco-green/30 opacity-80'
+          : isActive
+            ? 'bg-eco-green/10 border-eco-green/50 ring-1 ring-eco-green/30'
+            : 'bg-gray-800 border-gray-700'}
+      `}
+    >
+      {/* Numara / tamamlandı çemberi */}
       <div
         className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center
                    text-sm font-bold text-gray-900"
-        style={{ backgroundColor: color }}
+        style={{
+          backgroundColor: isCompleted ? '#2ECC71' : isActive ? '#2ECC71' : '#374151',
+          color: isCompleted || isActive ? '#111827' : '#9CA3AF',
+        }}
       >
-        {step.stepNumber}
+        {isCompleted ? '✓' : step.stepNumber}
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-sm font-medium text-white">{step.instruction}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{step.zoneName}</p>
+            <p className={`text-sm font-medium ${isCompleted ? 'text-gray-400 line-through' : 'text-white'}`}>
+              {step.instruction}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5">
+              {step.zoneName}
+              {hasMap && (
+                <span className="text-eco-green/60">● haritada</span>
+              )}
+            </p>
           </div>
           <div className="flex-shrink-0 flex flex-col items-end gap-1">
-            {/* Density chip */}
             <span
               className="text-xs px-2 py-0.5 rounded-full font-medium"
               style={{ color, backgroundColor: color + '20', border: `1px solid ${color}40` }}
             >
               {label}
             </span>
-            {/* Yürüyüş süresi */}
             <span className="text-xs text-gray-500">~{step.estimatedWalkMinutes} dk</span>
           </div>
         </div>
 
-        {/* Uyarı ikonu — yoğun bölgeler için */}
-        {isBusy && (
+        {isBusy && !isCompleted && (
           <div className="mt-2 flex items-center gap-1.5 text-yellow-400 text-xs">
             <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
             </svg>
             Bu bölge yoğun — dikkatli ilerleyin
+          </div>
+        )}
+
+        {/* Butonlar — yalnızca aktif adım */}
+        {journeyStarted && isActive && !isCompleted && (
+          <div className="mt-3 flex flex-col gap-2">
+            <button
+              onClick={onQrScan}
+              disabled={checkingIn}
+              className={`
+                w-full py-2.5 rounded-lg text-sm font-semibold transition-all
+                flex items-center justify-center gap-2
+                ${checkingIn
+                  ? 'bg-eco-green/40 text-gray-900 cursor-wait'
+                  : 'bg-eco-green text-gray-900 hover:bg-green-400 active:scale-95 shadow-md shadow-eco-green/20'}
+              `}
+            >
+              {checkingIn ? 'Kaydediliyor...' : '📷 QR Okut'}
+            </button>
           </div>
         )}
       </div>
@@ -75,32 +109,125 @@ function StepCard({ step }) {
 }
 
 export default function RouteSuggestionPage() {
-  const [searchParams] = useSearchParams()
   const { data: route, loading, error } = useSuggestedRoute()
-  const [routeSelected, setRouteSelected] = useState(false)
-  const [earning, setEarning] = useState(false)
+  const { data: heatmapData } = useHeatmap(60000)
+  const { data: alternatives } = useAlternatives(1)
+  const { refreshWallet } = useLoyaltyContext()
 
-  const handleSelectRoute = async () => {
-    if (routeSelected || earning) return
-    setEarning(true)
+  const [journeyStarted,  setJourneyStarted]  = useState(false)
+  const [activeStep,      setActiveStep]      = useState(null)
+  const [completedSteps,  setCompletedSteps]  = useState(new Set())
+  const [journeyComplete, setJourneyComplete] = useState(false)
+  const [checkingIn,      setCheckingIn]      = useState(false)
+
+  // QR Scanner modal state
+  const [qrModalOpen,    setQrModalOpen]    = useState(false)
+  const [qrTargetStep,   setQrTargetStep]   = useState(null)   // QR taraması yapılacak step
+
+  // QR modal aç
+  const handleOpenQrScanner = (step) => {
+    setQrTargetStep(step)
+    setQrModalOpen(true)
+  }
+
+  // QR tarandıktan sonra backend doğrulaması
+  const handleQrScanned = async (scannedText) => {
+    if (!qrTargetStep || !route) return
+    setCheckingIn(true)
     try {
-      const res = await loyaltyApi.earn('ROUTE_SELECTION')
-      const newBalance = res.data.data?.currentBalance ?? 0
-      const gained = ACTION_POINTS.ROUTE_SELECTION
-      toast.success(`🌿 +${gained} Eko-Puan kazandınız! Toplam: ${newBalance}`)
-      setRouteSelected(true)
-    } catch {
-      toast.error('Puan kazanılamadı, lütfen tekrar deneyin.')
+      // 1. QR içeriğini parse et (JSON veya düz token)
+      let scannedToken = scannedText.trim()
+      try {
+        const parsed = JSON.parse(scannedText)
+        if (parsed.token) scannedToken = parsed.token
+      } catch {
+        // Düz token girilmişse olduğu gibi kullan
+      }
+
+      // 2. Backend'de QR doğrula
+      const verifyRes = await routeApi.verifyQr({
+        scannedToken,
+        expectedZoneName: qrTargetStep.zoneName,
+      })
+      const verifyData = verifyRes.data.data
+
+      if (!verifyData.verified) {
+        toast.error(verifyData.message, { duration: 4000 })
+        return
+      }
+
+      // 3. QR geçerli → adımı check-in yap (mevcut mantık)
+      toast.success(verifyData.message)
+      await handleCheckin(qrTargetStep)
+
+    } catch (err) {
+      const msg = err.response?.data?.message ?? 'QR doğrulama başarısız'
+      toast.error(msg)
     } finally {
-      setEarning(false)
+      setCheckingIn(false)
+      setQrTargetStep(null)
     }
   }
 
-  // Hedef kapı zoneId'yi alternatifler için bul
-  const targetZoneId = route?.steps?.at(-1)
-    ? null  // RouteResponse'ta zoneId yok, alternatifler genel olarak çekilecek
-    : null
-  const { data: alternatives } = useAlternatives(1) // Gate A1 default
+  const handleStartJourney = () => {
+    if (!route?.steps?.length) return
+    setJourneyStarted(true)
+    setActiveStep(route.steps[0].stepNumber)
+  }
+
+  const handleCheckin = async (step) => {
+    if (checkingIn || !route) return
+    setCheckingIn(true)
+    try {
+      await routeApi.checkinStep({
+        flightId:   route.flightId,
+        stepNumber: step.stepNumber,
+        zoneName:   step.zoneName,
+        totalSteps: route.steps.length,
+      })
+
+      const newCompleted = new Set(completedSteps)
+      newCompleted.add(step.stepNumber)
+      setCompletedSteps(newCompleted)
+
+      // Son adım mı?
+      const isLastStep = step.stepNumber === route.steps[route.steps.length - 1].stepNumber
+      if (isLastStep) {
+        // Rotayı tamamla
+        try {
+          const res = await routeApi.completeRoute(route.flightId)
+          const data = res.data.data
+          if (data.alreadyRewarded) {
+            // Daha önce bu uçuş için puan alınmış
+            toast('✓ Bu uçuş için eko puanı zaten kazanılmış.', { icon: 'ℹ️', duration: 4000 })
+          } else {
+            toast.success(
+              `🏆 Rota tamamlandı! +${data.pointsEarned} Eko-Puan kazandınız! Toplam: ${data.newBalance}`,
+              { duration: 5000 }
+            )
+            refreshWallet()   // Navbar'daki bakiyeyi anında güncelle (sadece yeni puan varsa)
+          }
+          setJourneyComplete(true)
+          setActiveStep(null)
+        } catch (err) {
+          const msg = err.response?.data?.message ?? 'Rota tamamlanamadı'
+          toast.error(msg)
+        }
+      } else {
+        // Sonraki adıma geç
+        const nextIdx = route.steps.findIndex(s => s.stepNumber === step.stepNumber) + 1
+        if (nextIdx < route.steps.length) {
+          setActiveStep(route.steps[nextIdx].stepNumber)
+          toast.success(`✓ ${step.zoneName} tamamlandı!`)
+        }
+      }
+    } catch (err) {
+      const msg = err.response?.data?.message ?? 'Check-in başarısız'
+      toast.error(msg)
+    } finally {
+      setCheckingIn(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -142,7 +269,11 @@ export default function RouteSuggestionPage() {
     </div>
   )
 
-  const totalMins = parseInt(route.estimatedTotalWalkMinutes) || 0
+  const heatmapZones = heatmapData?.zones ?? []
+
+  const hasMapCoords  = heatmapZones.some(z => z.posX != null)
+  const totalSteps    = route.steps.length
+  const doneCount     = completedSteps.size
 
   return (
     <div className="min-h-screen bg-gray-900 p-6">
@@ -159,7 +290,7 @@ export default function RouteSuggestionPage() {
         </div>
       </div>
 
-      {/* Üst Banner — tahmini varış */}
+      {/* Üst Banner */}
       <div className="mb-6 p-4 rounded-xl bg-eco-green/10 border border-eco-green/30 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-eco-green/20 flex items-center justify-center">
@@ -183,36 +314,145 @@ export default function RouteSuggestionPage() {
         </div>
       </div>
 
+      {/* İlerleme çubuğu (yolculuk başladıktan sonra) */}
+      {journeyStarted && (
+        <div className="mb-5 p-4 rounded-xl bg-gray-800 border border-gray-700">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-white">
+              {journeyComplete ? '🏆 Rota Tamamlandı!' : `İlerleme: ${doneCount}/${totalSteps} durak`}
+            </span>
+            <span className="text-xs text-eco-green font-mono">
+              {journeyComplete
+                ? (route.alreadyRewarded ? 'Tamamlandı' : '+50 Eko-Puan')
+                : `${Math.round((doneCount / totalSteps) * 100)}%`}
+            </span>
+          </div>
+          <div className="w-full h-2.5 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-eco-green rounded-full transition-all duration-500"
+              style={{ width: `${(doneCount / totalSteps) * 100}%` }}
+            />
+          </div>
+          {!journeyComplete && activeStep != null && (
+            <p className="text-xs text-gray-400 mt-2">
+              Şu an: <span className="text-eco-green font-medium">
+                {route.steps.find(s => s.stepNumber === activeStep)?.zoneName}
+              </span> — hedefe ulaştığınızda "📷 QR Okut"a basın
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Daha önce ödüllendirilmiş banner (önceki oturum) */}
+      {route.alreadyRewarded && !journeyStarted && !journeyComplete && (
+        <div className="mb-4 p-4 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center gap-3">
+          <span className="text-xl flex-shrink-0">ℹ️</span>
+          <div>
+            <p className="text-blue-300 font-semibold text-sm">Bu uçuş için eko puanı zaten kazandınız</p>
+            <p className="text-gray-400 text-xs mt-0.5">Rotayı yeniden takip edebilirsiniz, ancak tekrar puan verilmez.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Rotayı Başlat butonu (henüz başlamadıysa) */}
+      {!journeyStarted && !journeyComplete && (
+        <button
+          onClick={handleStartJourney}
+          className={`
+            w-full py-3.5 rounded-xl font-bold text-sm mb-6 transition-all
+            flex items-center justify-center gap-2
+            ${route.alreadyRewarded
+              ? 'bg-gray-700 text-gray-400 hover:bg-gray-600 border border-gray-600'
+              : 'bg-eco-green text-gray-900 hover:bg-green-400 active:scale-95 shadow-lg shadow-eco-green/20'}
+          `}
+        >
+          {route.alreadyRewarded
+            ? '🚶 Rotayı Yeniden Takip Et (puan verilmez)'
+            : '🚶 Rotayı Başlat — Her Durağı Tek Tek Tamamla'}
+        </button>
+      )}
+
+      {/* Tamamlandı banner */}
+      {journeyComplete && (
+        <div className="mb-6 p-4 rounded-xl bg-eco-green/15 border border-eco-green/40 text-center">
+          <div className="text-3xl mb-1">🏆</div>
+          <p className="text-eco-green font-bold text-lg">Rotayı Tamamladınız!</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {route.alreadyRewarded
+              ? 'Bu uçuş için eko puanı daha önce kazanılmıştı'
+              : '50 Eko-Puan hesabınıza eklendi'}
+          </p>
+        </div>
+      )}
+
       {/* Adım Adım Rota */}
-      <h2 className="text-base font-semibold text-white mb-3">Güzergah</h2>
-      <div className="flex flex-col gap-3 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-base font-semibold text-white">Güzergah</h2>
+        <span className="text-xs text-gray-500">{totalSteps} durak · 🌿 50 puan</span>
+      </div>
+      <div className="flex flex-col gap-3 mb-6">
         {route.steps.map(step => (
-          <StepCard key={step.stepNumber} step={step} />
+          <StepCard
+            key={step.stepNumber}
+            step={step}
+            isActive={step.stepNumber === activeStep}
+            isCompleted={completedSteps.has(step.stepNumber)}
+            journeyStarted={journeyStarted}
+            onCheckin={() => handleCheckin(step)}
+            onQrScan={() => handleOpenQrScanner(step)}
+            checkingIn={checkingIn}
+          />
         ))}
       </div>
 
-      {/* Rotayı Seç — Puan Kazan Butonu */}
-      <button
-        onClick={handleSelectRoute}
-        disabled={routeSelected || earning}
-        className={`
-          w-full py-3.5 rounded-xl font-bold text-sm mb-8 transition-all
-          flex items-center justify-center gap-2
-          ${routeSelected
-            ? 'bg-eco-green/20 border border-eco-green/40 text-eco-green cursor-default'
-            : earning
-              ? 'bg-eco-green/50 text-gray-900 cursor-wait'
-              : 'bg-eco-green text-gray-900 hover:bg-green-400 active:scale-95 shadow-lg shadow-eco-green/20'}
-        `}
-      >
-        {routeSelected ? (
-          <>✓ Rota Seçildi — 🌿 +50 Eko-Puan Kazandınız!</>
-        ) : earning ? (
-          <>Puan kazanılıyor...</>
-        ) : (
-          <>🌿 Bu Rotayı Seç — +50 Eko-Puan Kazan</>
-        )}
-      </button>
+      {/* QR Tarayıcı Modal */}
+      <QrScannerModal
+        isOpen={qrModalOpen}
+        onClose={() => { setQrModalOpen(false); setQrTargetStep(null) }}
+        onScan={handleQrScanned}
+        expectedZone={qrTargetStep?.zoneName}
+      />
+
+      {/* ── Terminal Haritası ─────────────────────────────────────── */}
+      {hasMapCoords && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-base font-semibold text-white">Terminal Haritası</h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {journeyStarted
+                  ? 'Yeşil duraklar tamamlananları, parlayan durak aktif konumu gösterir'
+                  : 'Rota üzerindeki duraklar haritada işaretlendi'}
+              </p>
+            </div>
+            {journeyStarted && activeStep != null && !journeyComplete && (
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full
+                              bg-eco-green/10 border border-eco-green/30">
+                <span className="w-2 h-2 rounded-full bg-eco-green animate-pulse" />
+                <span className="text-xs text-eco-green font-medium">
+                  Durak {activeStep}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <AirportHeatmap
+            zones={heatmapZones}
+            onZoneClick={() => {}}
+            selectedZoneId={null}
+            routeSteps={route.steps}
+            activeStepNumber={activeStep}
+            completedSteps={completedSteps}
+            onRouteStepClick={() => {}}
+          />
+
+          <p className="text-center text-xs text-gray-600 mt-2">
+            {journeyStarted
+              ? '✓ işaretli duraklar tamamlandı · Parlayan durak aktif hedefiniz'
+              : 'Rotayı başlatarak her durağı adım adım tamamlayın'}
+          </p>
+        </div>
+      )}
 
       {/* Alternatif Sakin Alanlar */}
       {alternatives.length > 0 && (

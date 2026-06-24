@@ -6,6 +6,10 @@ import com.ecoterminal.model.dto.AuthResponse;
 import com.ecoterminal.model.dto.LoginRequest;
 import com.ecoterminal.model.dto.RefreshTokenRequest;
 import com.ecoterminal.model.dto.RegisterRequest;
+import com.ecoterminal.model.dto.ForgotPasswordRequest;
+import com.ecoterminal.model.dto.ResetPasswordRequest;
+import com.ecoterminal.model.dto.SendCodeRequest;
+import com.ecoterminal.model.dto.VerifyRegisterRequest;
 import com.ecoterminal.service.AuthService;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
@@ -17,6 +21,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -45,13 +50,17 @@ public class AuthController {
     // In-memory fallback: Redis unavailable durumunda
     private final ConcurrentHashMap<String, Bucket> fallbackBuckets = new ConcurrentHashMap<>();
 
-    private static final Supplier<BucketConfiguration> LOGIN_BUCKET_CONFIG = () ->
-            BucketConfiguration.builder()
-                    .addLimit(Bandwidth.builder()
-                            .capacity(10)
-                            .refillGreedy(10, Duration.ofMinutes(1))
-                            .build())
-                    .build();
+    @Value("${app.rate-limit.login.capacity:10}")
+    private int loginRateCapacity;
+
+    private Supplier<BucketConfiguration> loginBucketConfig() {
+        return () -> BucketConfiguration.builder()
+                .addLimit(Bandwidth.builder()
+                        .capacity(loginRateCapacity)
+                        .refillGreedy(loginRateCapacity, Duration.ofMinutes(1))
+                        .build())
+                .build();
+    }
 
     // ── POST /api/auth/login ───────────────────────────────────────────────
 
@@ -82,6 +91,27 @@ public class AuthController {
                 .body(ApiResponse.ok(authResponse, "Kayıt başarılı"));
     }
 
+    // ── POST /api/auth/register/send-code ─────────────────────────────────────
+
+    @PostMapping("/register/send-code")
+    public ResponseEntity<ApiResponse<Void>> sendRegisterCode(
+            @Valid @RequestBody SendCodeRequest request
+    ) {
+        authService.sendRegisterCode(request);
+        return ResponseEntity.ok(ApiResponse.ok(null, "Doğrulama kodu e-posta adresinize gönderildi"));
+    }
+
+    // ── POST /api/auth/register/verify ────────────────────────────────────────
+
+    @PostMapping("/register/verify")
+    public ResponseEntity<ApiResponse<AuthResponse>> verifyAndRegister(
+            @Valid @RequestBody VerifyRegisterRequest request
+    ) {
+        AuthResponse authResponse = authService.verifyAndRegister(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok(authResponse, "Kayıt başarılı"));
+    }
+
     // ── POST /api/auth/refresh ─────────────────────────────────────────────
 
     @PostMapping("/refresh")
@@ -92,6 +122,27 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok(authResponse, "Token yenilendi"));
     }
 
+    // ── POST /api/auth/forgot-password ────────────────────────────────────────
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request
+    ) {
+        authService.sendPasswordResetCode(request);
+        return ResponseEntity.ok(ApiResponse.ok(null,
+                "Eğer bu e-posta kayıtlıysa, doğrulama kodu gönderildi"));
+    }
+
+    // ── POST /api/auth/reset-password ─────────────────────────────────────────
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request
+    ) {
+        authService.resetPassword(request);
+        return ResponseEntity.ok(ApiResponse.ok(null, "Şifreniz başarıyla güncellendi"));
+    }
+
     // ── Yardımcı Metotlar ─────────────────────────────────────────────────
 
     private boolean tryConsumeToken(String clientIp) {
@@ -99,18 +150,19 @@ public class AuthController {
             try {
                 byte[] key = ("login_rate:" + clientIp).getBytes(StandardCharsets.UTF_8);
                 Bucket bucket = proxyManager.builder()
-                        .build(key, LOGIN_BUCKET_CONFIG);
+                        .build(key, loginBucketConfig());
                 return bucket.tryConsume(1);
             } catch (Exception e) {
                 log.warn("Redis rate limiter hatası, in-memory fallback kullanılıyor: {}", e.getMessage());
             }
         }
         // In-memory fallback
+        int cap = loginRateCapacity;
         Bucket bucket = fallbackBuckets.computeIfAbsent(clientIp, ip ->
                 Bucket.builder()
                         .addLimit(Bandwidth.builder()
-                                .capacity(10)
-                                .refillGreedy(10, Duration.ofMinutes(1))
+                                .capacity(cap)
+                                .refillGreedy(cap, Duration.ofMinutes(1))
                                 .build())
                         .build()
         );

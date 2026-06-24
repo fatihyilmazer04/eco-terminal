@@ -55,6 +55,19 @@ public interface OccupancyReadingRepository extends JpaRepository<OccupancyReadi
                                            @Param("end") Instant end);
 
     /**
+     * Zone adına erişim gereken özet sorgular için JOIN FETCH varyantı.
+     * Rapor servisi tarafından kullanılır.
+     */
+    @Query("""
+            SELECT r FROM OccupancyReading r
+            JOIN FETCH r.zone
+            WHERE r.recordedAt >= :start AND r.recordedAt < :end
+            ORDER BY r.recordedAt ASC
+            """)
+    List<OccupancyReading> findAllInRangeWithZone(@Param("start") Instant start,
+                                                   @Param("end") Instant end);
+
+    /**
      * Belirli zone'un son X saat içindeki okumaları — ZoneDetailPanel grafiği için.
      */
     @Query("""
@@ -65,6 +78,26 @@ public interface OccupancyReadingRepository extends JpaRepository<OccupancyReadi
             """)
     List<OccupancyReading> findTimeSeriesByZoneId(@Param("zoneId") Long zoneId,
                                                    @Param("since") Instant since);
+
+    /**
+     * Saatlik en güncel doluluk — ZoneHistoryPanel grafiği için.
+     * DATE_TRUNC ile her saat için EN SON kaydı döner (max ~24 nokta).
+     * AVG yerine DISTINCT ON kullanılır: görüntü analizi sonrası son değer
+     * önceki simülasyon ortalamasıyla kirletilmez.
+     * Dönen Object[]: [0]=saat_etiketi "HH:MM", [1]=density_pct, [2]=people_count
+     */
+    @Query(value = """
+            SELECT DISTINCT ON (DATE_TRUNC('hour', recorded_at))
+                TO_CHAR(DATE_TRUNC('hour', recorded_at), 'HH24:MI') AS hour_label,
+                density_pct                                          AS avg_density,
+                people_count                                         AS avg_people
+            FROM occupancy_readings
+            WHERE zone_id = :zoneId
+              AND recorded_at >= :since
+            ORDER BY DATE_TRUNC('hour', recorded_at), recorded_at DESC
+            """, nativeQuery = true)
+    List<Object[]> findHourlyAveragesByZoneId(@Param("zoneId") Long zoneId,
+                                               @Param("since") Instant since);
 
     /**
      * Zone'un son N okuması (trend hesaplama için).

@@ -4,6 +4,10 @@ import com.ecoterminal.exception.BusinessException;
 import com.ecoterminal.model.dto.AuthResponse;
 import com.ecoterminal.model.dto.LoginRequest;
 import com.ecoterminal.model.dto.RegisterRequest;
+import com.ecoterminal.model.dto.ForgotPasswordRequest;
+import com.ecoterminal.model.dto.ResetPasswordRequest;
+import com.ecoterminal.model.dto.SendCodeRequest;
+import com.ecoterminal.model.dto.VerifyRegisterRequest;
 import com.ecoterminal.model.entity.Role;
 import com.ecoterminal.model.entity.User;
 import com.ecoterminal.model.entity.UserProfile;
@@ -36,6 +40,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final CustomUserDetailsService userDetailsService;
+    private final VerificationService verificationService;
 
     /**
      * Kullanıcı girişi.
@@ -122,6 +127,67 @@ public class AuthService {
         );
     }
 
+    // ── Email Doğrulamalı Kayıt (2 adım) ──────────────────────────────────────
+
+    /**
+     * Adım 1: Email'e doğrulama kodu gönder.
+     * Hesap henüz oluşturulmaz — sadece kod gönderilir.
+     */
+    @Transactional
+    public void sendRegisterCode(SendCodeRequest req) {
+        if (userRepository.existsByEmail(req.email())) {
+            throw BusinessException.conflict("Bu e-posta adresi zaten kayıtlı");
+        }
+        verificationService.generateAndSend(req.email(), "REGISTER");
+        log.info("Kayıt doğrulama kodu gönderildi: {}", req.email());
+    }
+
+    /**
+     * Adım 2: Kodu doğrula → başarılıysa User + UserProfile oluştur, JWT dön.
+     */
+    @Transactional
+    public AuthResponse verifyAndRegister(VerifyRegisterRequest req) {
+        // Kod doğrula
+        boolean valid = verificationService.verify(req.email(), req.code(), "REGISTER");
+        if (!valid) {
+            throw new BusinessException("Kod hatalı veya süresi dolmuş", HttpStatus.BAD_REQUEST);
+        }
+
+        // Kayıt sırasında email tekrar kayıtlı oldu mu?
+        if (userRepository.existsByEmail(req.email())) {
+            throw BusinessException.conflict("Bu e-posta adresi zaten kayıtlı");
+        }
+
+        User user = User.builder()
+                .email(req.email())
+                .passwordHash(passwordEncoder.encode(req.password()))
+                .role(Role.USER)
+                .isActive(true)
+                .emailVerified(true)
+                .build();
+        user = userRepository.save(user);
+
+        UserProfile profile = UserProfile.builder()
+                .user(user)
+                .fullName(req.fullName())
+                .build();
+        userProfileRepository.save(profile);
+
+        UserDetails userDetails = new UserPrincipal(user);
+        String accessToken  = jwtService.generateAccessToken(userDetails);
+        String refreshToken = jwtService.generateRefreshToken(userDetails);
+
+        log.info("Email doğrulamalı kayıt tamamlandı: {} | id: {}", user.getEmail(), user.getUserId());
+
+        return new AuthResponse(
+                accessToken, refreshToken,
+                user.getRole().name(),
+                user.getUserId(),
+                user.getEmail(),
+                req.fullName()
+        );
+    }
+
     /**
      * Refresh token ile yeni access token üretir.
      * Refresh token türü ve süresi kontrol edilir.
@@ -151,5 +217,43 @@ public class AuthService {
                 principal.getEmail(),
                 fullName
         );
+    }
+
+    // ── Şifre Sıfırlama ───────────────────────────────────────────────────────
+
+    /**
+     * Şifre sıfırlama kodu gönderir.
+     * Güvenlik gereği: email kayıtlı olmasa da aynı başarı mesajı döner
+     * (email var/yok bilgisi dışarı sızdırılmaz).
+     */
+    @Transactional
+    public void sendPasswordResetCode(ForgotPasswordRequest req) {
+        boolean exists = userRepository.existsByEmail(req.email());
+        if (exists) {
+            verificationService.generateAndSend(req.email(), "PASSWORD_RESET");
+            log.info("Şifre sıfırlama kodu gönderildi: {}", req.email());
+        } else {
+            log.debug("Şifre sıfırlama: email kayıtlı değil, sessiz geçildi: {}", req.email());
+        }
+        // Her iki durumda da başarılı cevap dönülür — caller bunu mesaj olarak iletir
+    }
+
+    /**
+     * Kodu doğrula ve şifreyi güncelle.
+     */
+    @Transactional
+    public void resetPassword(ResetPasswordRequest req) {
+        boolean valid = verificationService.verify(req.email(), req.code(), "PASSWORD_RESET");
+        if (!valid) {
+            throw new BusinessException("Kod hatalı veya süresi dolmuş", HttpStatus.BAD_REQUEST);
+        }
+
+        User user = userRepository.findByEmail(req.email())
+                .orElseThrow(() -> BusinessException.notFound("Kullanıcı"));
+
+        user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
+        userRepository.save(user);
+
+        log.info("Şifre güncellendi: userId={}", user.getUserId());
     }
 }

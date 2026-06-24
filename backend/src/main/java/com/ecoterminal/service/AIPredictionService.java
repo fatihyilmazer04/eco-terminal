@@ -71,6 +71,29 @@ public class AIPredictionService {
         return predictions;
     }
 
+    /**
+     * Görüntü analizi sonrası tek zone için cache'i atlayıp hemen yeni tahmin al.
+     * Cache kontrolü yapılmaz — her çağrıda AI servisini gerçek zamanlı çağırır.
+     */
+    /**
+     * Görüntü analizi sonrası tek zone için cache'i atlayıp hemen yeni tahmin al.
+     * @return predictedLoad (0.0–1.0) ya da AI servis hatasında null
+     */
+    @Transactional
+    public Double refreshPredictionForZone(Long zoneId) {
+        try {
+            AIPredictionResponse fresh = aiClient.getPredictionForZone(zoneId);
+            _storeOne(fresh);
+            log.info("Zone {} için anlık AI tahmini güncellendi: load={} risk={}",
+                    zoneId, fresh.predictedLoad(), fresh.riskLevel());
+            return fresh.predictedLoad() != null ? fresh.predictedLoad().doubleValue() : null;
+        } catch (Exception e) {
+            log.warn("Zone {} için anlık AI tahmini güncellenemedi (ana akış etkilenmez): {}",
+                    zoneId, e.getMessage());
+            return null;
+        }
+    }
+
     // ── Okuma ───────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)
@@ -83,8 +106,10 @@ public class AIPredictionService {
 
     @Transactional(readOnly = true)
     public List<AIPredictionResponse> getHighRiskZones() {
-        return predRepository.findByRiskLevelOrderByGeneratedAtDesc("HIGH")
+        // Her zone'un EN SON tahmini üzerinden HIGH olanları filtrele (geçmiş birikmiş kayıtları sayma)
+        return predRepository.findLatestPerZone()
                 .stream()
+                .filter(p -> "HIGH".equals(p.getRiskLevel()))
                 .map(AIPredictionResponse::from)
                 .toList();
     }
@@ -139,13 +164,12 @@ public class AIPredictionService {
                                                     int[] minuteOffsets, String unit) {
         List<ForecastDataPoint> points = new ArrayList<>();
         for (int i = 0; i < minuteOffsets.length; i++) {
-            int mins    = minuteOffsets[i];
-            double hours  = mins / 60.0;
-            double drift  = "INCREASING".equals(trend) ?  0.04 * hours
-                          : "DECREASING".equals(trend) ? -0.04 * hours : 0.0;
-            double uncertainty = 0.015 * i;
-            double load = Math.min(1.0, Math.max(0.0,
-                    baseLoad + drift + (Math.random() - 0.5) * uncertainty));
+            int mins   = minuteOffsets[i];
+            double hours = mins / 60.0;
+            double drift = "INCREASING".equals(trend) ?  0.04 * hours
+                         : "DECREASING".equals(trend) ? -0.04 * hours : 0.0;
+            // Math.random() kaldırıldı — deterministik tahmin, her çağrıda aynı değer
+            double load = Math.min(1.0, Math.max(0.0, baseLoad + drift));
             double conf = Math.max(0.3, baseConf - 0.05 * i);
             String label = unit.equals("min") ? "+" + mins + " dk" : "+" + (mins / 60) + " sa";
             String risk  = load >= 0.85 ? "HIGH" : load >= 0.60 ? "MEDIUM" : "LOW";

@@ -66,6 +66,30 @@ export function useNotifications() {
     }
   }, [])
 
+  const deleteOne = useCallback(async (notifId) => {
+    try {
+      await notificationApi.deleteOne(notifId)
+      setNotifications(prev => prev.filter(n => n.notifId !== notifId))
+      setUnreadCount(prev => {
+        const wasUnread = notifications.find(n => n.notifId === notifId && !n.isRead)
+        return wasUnread ? Math.max(0, prev - 1) : prev
+      })
+    } catch {
+      toast.error('Bildirim silinemedi')
+    }
+  }, [notifications])
+
+  const clearAll = useCallback(async () => {
+    try {
+      await notificationApi.clearAll()
+      setNotifications([])
+      setUnreadCount(0)
+      toast.success('Tüm bildirimler temizlendi')
+    } catch {
+      toast.error('İşlem başarısız')
+    }
+  }, [])
+
   useEffect(() => {
     isMounted.current = true
     fetchAll()
@@ -76,5 +100,5 @@ export function useNotifications() {
     }
   }, [fetchAll, refreshCount])
 
-  return { notifications, unreadCount, loading, error, markAsRead, markAllAsRead, refetch: fetchAll }
+  return { notifications, unreadCount, loading, error, markAsRead, markAllAsRead, deleteOne, clearAll, refetch: fetchAll }
 }

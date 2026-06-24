@@ -1,0 +1,21 @@
+# =============================================================================
+# Production profili — SPRING_PROFILES_ACTIVE=prod ile devreye girer
+# Bu dosyadaki değerler application.yml'i override eder.
+# =============================================================================
+
+# Demo veri tazeleme kapalı (production ortamında gerçek veriler kullanılır)
+demo:
+  refresh-flights: false
+
+app:
+  demo:
+    # Sabit heatmap kapalı — canlı DB okumaları kullanılır
+    fixed-heatmap: false
+
+# Log seviyelerini production için düşür
+logging:
+  level:
+    com.ecoterminal: INFO
+    org.springframework.security: WARN
+    org.flywaydb: INFO
+    org.hibernate: WARN

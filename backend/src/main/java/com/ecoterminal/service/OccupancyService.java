@@ -14,6 +14,7 @@ import com.ecoterminal.repository.OccupancyReadingRepository;
 import com.ecoterminal.repository.ZoneRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +32,10 @@ public class OccupancyService {
     private final ZoneRepository zoneRepository;
     private final OccupancyReadingRepository occupancyReadingRepository;
     private final AuditLogService auditLogService;
+    private final DemoOccupancyProvider demoProvider;
+
+    @Value("${app.demo.fixed-heatmap:true}")
+    private boolean demoMode;
 
     // ── Bölge Listesi ────────────────────────────────────────────────────────
 
@@ -63,6 +68,10 @@ public class OccupancyService {
 
     @Transactional(readOnly = true)
     public HeatmapResponse getHeatmapData() {
+        if (demoMode) {
+            return demoProvider.buildOccupancyHeatmapResponse();
+        }
+
         List<Zone> zones = zoneRepository.findByStatus(ZoneStatus.ACTIVE);
 
         // Tüm bölgelerin son okuması tek sorguda — N+1 yok

@@ -33,30 +33,10 @@ export function useEnergy() {
   useEffect(() => {
     isMounted.current = true
     fetchAll()
-    return () => { isMounted.current = false }
+    const interval = setInterval(fetchAll, 15_000)
+    return () => { isMounted.current = false; clearInterval(interval) }
   }, [fetchAll])
 
   return { usage, savings, loadingUsage, error, refetch: fetchAll }
 }
 
-/**
- * Tek bölgenin enerji trendi.
- */
-export function useEnergyTrend(zoneId, hours = 6) {
-  const [data, setData]       = useState([])
-  const [loading, setLoading] = useState(false)
-  const isMounted = useRef(true)
-
-  useEffect(() => {
-    if (!zoneId) return
-    isMounted.current = true
-    setLoading(true)
-    energyApi.getTrend(zoneId, hours)
-      .then(res => { if (isMounted.current) setData(res.data.data ?? []) })
-      .catch(() => {})
-      .finally(() => { if (isMounted.current) setLoading(false) })
-    return () => { isMounted.current = false }
-  }, [zoneId, hours])
-
-  return { data, loading }
-}

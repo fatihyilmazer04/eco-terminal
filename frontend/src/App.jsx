@@ -2,6 +2,7 @@ import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { LoyaltyProvider } from './context/LoyaltyContext'
 import ErrorBoundary from './components/ErrorBoundary'
 import PrivateRoute from './components/PrivateRoute'
 import AdminRoute from './components/AdminRoute'
@@ -9,6 +10,7 @@ import AdminLayout from './components/AdminLayout'
 import Navbar from './components/Navbar'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
 import PassengerDashboard from './pages/passenger/PassengerDashboard'
 import HeatmapPage from './pages/passenger/HeatmapPage'
 import FlightInfoPage from './pages/passenger/FlightInfoPage'
@@ -22,9 +24,10 @@ import OccupancyManagement from './pages/admin/OccupancyManagement'
 import EnergyManagement from './pages/admin/EnergyManagement'
 import ReportsPage from './pages/admin/ReportsPage'
 import AIPredictionsPage from './pages/admin/AIPredictionsPage'
-import CrowdMonitorPage from './pages/admin/CrowdMonitorPage'
 import AdminHeatmapPage from './pages/admin/AdminHeatmapPage'
 import SystemSettingsPage from './pages/admin/SystemSettingsPage'
+import QrCodeManagementPage from './pages/admin/QrCodeManagementPage'
+import AdminFlightManagementPage from './pages/admin/AdminFlightManagementPage'
 import { useFcmToken } from './hooks/useFcmToken'
 import ChatbotWidget from './components/ChatbotWidget'
 
@@ -87,8 +90,9 @@ function AppRoutes() {
       <Route path="/" element={<RootRedirect />} />
 
       {/* Auth — herkese açık */}
-      <Route path="/login"    element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/login"            element={<LoginPage />} />
+      <Route path="/register"         element={<RegisterPage />} />
+      <Route path="/forgot-password"  element={<ForgotPasswordPage />} />
 
       {/* Yolcu rotaları — Navbar dahil */}
       <Route path="/passenger/dashboard"      element={<PassengerPage><PassengerDashboard /></PassengerPage>} />
@@ -107,7 +111,9 @@ function AppRoutes() {
       <Route path="/admin/reports"     element={<AdminPage><ReportsPage /></AdminPage>} />
       <Route path="/admin/predictions" element={<AdminPage><AIPredictionsPage /></AdminPage>} />
       <Route path="/admin/heatmap"     element={<AdminPage><AdminHeatmapPage /></AdminPage>} />
-      <Route path="/admin/crowd"       element={<AdminPage><CrowdMonitorPage /></AdminPage>} />
+      <Route path="/admin/crowd"        element={<Navigate to="/admin/heatmap" replace />} />
+      <Route path="/admin/flights"      element={<AdminPage><AdminFlightManagementPage /></AdminPage>} />
+      <Route path="/admin/qr-codes"    element={<AdminPage><QrCodeManagementPage /></AdminPage>} />
       <Route path="/admin/settings"    element={<AdminPage><SystemSettingsPage /></AdminPage>} />
 
       <Route path="*" element={<PlaceholderPage title="404 — Sayfa Bulunamadı" />} />
@@ -119,6 +125,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <LoyaltyProvider>
         <ErrorBoundary>
           <AppRoutes />
         </ErrorBoundary>
@@ -135,6 +142,7 @@ export default function App() {
             error:   { iconTheme: { primary: '#E74C3C', secondary: '#1F2937' } },
           }}
         />
+        </LoyaltyProvider>
       </AuthProvider>
     </BrowserRouter>
   )

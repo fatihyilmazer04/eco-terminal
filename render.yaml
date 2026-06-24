@@ -1,0 +1,194 @@
+databases:
+  # ── Managed PostgreSQL ────────────────────────────────────────────────────────
+  - name: eco-terminal-db
+    databaseName: ecoterminal
+    user: ecoterminal
+    plan: free
+    region: frankfurt
+
+services:
+
+  # ── Managed Redis ─────────────────────────────────────────────────────────────
+  - type: redis
+    name: eco-terminal-redis
+    plan: free
+    region: frankfurt
+
+  # ── Backend (Spring Boot) ─────────────────────────────────────────────────────
+  - type: web
+    name: eco-terminal-backend
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    region: frankfurt
+    envVars:
+      # ── Database (Render managed PostgreSQL) ──
+      - key: DB_HOST
+        fromDatabase:
+          name: eco-terminal-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: eco-terminal-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: eco-terminal-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: eco-terminal-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: eco-terminal-db
+          property: password
+      # ── Redis (Render managed Redis) ──
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: eco-terminal-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: eco-terminal-redis
+          property: port
+      # ── JWT & Güvenlik ──
+      - key: JWT_SECRET
+        sync: false
+      # ── Spring profili ──
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      # ── CORS (frontend origin) ──
+      - key: CORS_ORIGINS
+        value: https://eco-terminal-frontend.onrender.com
+      # ── E-posta (Resend API) ──
+      - key: MAIL_ENABLED
+        value: "true"
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      # ── AI Servisi ──
+      - key: AI_SERVICE_URL
+        value: https://eco-terminal-ai.onrender.com
+      # ── LLM Servisi ──
+      - key: LLM_SERVICE_URL
+        value: https://eco-terminal-llm.onrender.com
+      - key: LLM_SERVICE_INTERNAL_TOKEN
+        sync: false
+      # ── YOLOv8 Servisi ──
+      - key: YOLO_SERVICE_URL
+        value: https://eco-terminal-yolo.onrender.com
+
+  # ── Frontend (React SPA — Render Static Site) ─────────────────────────────────
+  # Static Site olarak deploy edilir: nginx yok, proxy yok, döngü riski yok.
+  # VITE_API_BASE_URL build sırasında Vite tarafından JS bundle'a bake edilir.
+  # Tarayıcı backend'e direkt HTTPS çağrısı yapar.
+  - type: web
+    name: eco-terminal-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    pullRequestPreviewsEnabled: false
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://eco-terminal-backend.onrender.com
+    routes:
+      # React Router v6 — tüm rotalar index.html'e (SPA)
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # ── AI Service (Flask / LSTM) ─────────────────────────────────────────────────
+  - type: web
+    name: eco-terminal-ai
+    runtime: docker
+    dockerfilePath: ai-service/Dockerfile
+    dockerContext: ai-service
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: DB_HOST
+        fromDatabase:
+          name: eco-terminal-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: eco-terminal-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: eco-terminal-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: eco-terminal-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: eco-terminal-db
+          property: password
+      - key: FLASK_ENV
+        value: production
+
+  # ── LLM Service (FastAPI / RAG Chatbot) ──────────────────────────────────────
+  - type: web
+    name: eco-terminal-llm
+    runtime: docker
+    dockerfilePath: llm-service/Dockerfile
+    dockerContext: llm-service
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: BACKEND_BASE_URL
+        value: https://eco-terminal-backend.onrender.com
+      - key: BACKEND_INTERNAL_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.0-flash
+      - key: ENABLE_INTENT_CLASSIFIER
+        value: "true"
+      - key: ENABLE_RAG
+        value: "true"
+
+  # ── YOLOv8 Service (Flask / Crowd Detection) ──────────────────────────────────
+  - type: web
+    name: eco-terminal-yolo
+    runtime: docker
+    dockerfilePath: yolov8-service/Dockerfile
+    dockerContext: yolov8-service
+    plan: free
+    region: frankfurt
+    envVars:
+      - key: DB_HOST
+        fromDatabase:
+          name: eco-terminal-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: eco-terminal-db
+          property: port
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: eco-terminal-db
+          property: database
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: eco-terminal-db
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: eco-terminal-db
+          property: password
+      - key: AI_SERVICE_URL
+        value: https://eco-terminal-ai.onrender.com
+      - key: ENABLE_AUTO_SCAN
+        value: "false"
+      - key: FLASK_ENV
+        value: production

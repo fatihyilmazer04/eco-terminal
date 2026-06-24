@@ -44,3 +44,42 @@ ai-service/*.log
 
 # OS
 Thumbs.db
+
+# ML Pipeline — üretilen büyük veri ve model dosyaları git'e push edilmez
+ml-pipeline/data/*.parquet
+ml-pipeline/data/*.png
+ml-pipeline/data/*.csv
+ml-pipeline/data/*.txt
+ml-pipeline/models/*.pkl
+ml-pipeline/models/*.json
+ml-pipeline/__pycache__/
+ml-pipeline/*.pyc
+
+# Claude Code memory (local tooling — not project code)
+.claude/
+
+# Large model weights
+yolov8s.pt
+
+# Backup files
+README.md.backup
+
+# Python virtual environments
+intent-training/venv/
+llm-service/venv/
+**/venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Large ML model weights
+yolo-finetune/
+**/*.pt
+**/*.h5
+**/*.keras
+**/*.pkl
+
+# Large ML model weights (>100MB — GitHub limit)
+**/*.safetensors
+**/*.bin
+llm-service/app/intent/models/distilbert/model.safetensors

@@ -48,6 +48,8 @@ export default function FlightCard({
   seatNumber,
   flightClass,
   status,
+  ticketId,
+  onUnclaim,
 }) {
   const minsNum   = Number(minutesToDeparture)
   const timeColor = minuteColor(minsNum)
@@ -137,20 +139,42 @@ export default function FlightCard({
         </div>
       </div>
 
-      {/* Rotamı Göster Butonu */}
-      {flightId && minsNum > 0 && (
-        <Link
-          to={`/passenger/route?flightId=${flightId}`}
-          className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg
-                     bg-eco-green/10 hover:bg-eco-green/20 text-eco-green text-sm font-medium
-                     border border-eco-green/20 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-          </svg>
-          Rotamı Göster
-        </Link>
+      {/* Alt butonlar */}
+      {(flightId && minsNum > 0 || onUnclaim) && (
+        <div className={`mt-3 flex gap-2 ${flightId && minsNum > 0 && onUnclaim ? 'flex-row' : ''}`}>
+          {flightId && minsNum > 0 && (
+            <Link
+              to={`/passenger/route?flightId=${flightId}`}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg
+                         bg-eco-green/10 hover:bg-eco-green/20 text-eco-green text-sm font-medium
+                         border border-eco-green/20 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+              Rotamı Göster
+            </Link>
+          )}
+          {onUnclaim && (
+            <button
+              onClick={() => {
+                if (window.confirm('Bu bileti kaldırmak istediğinize emin misiniz?\nBilet PNR kodunuzla tekrar eklenebilir.')) {
+                  onUnclaim(ticketId)
+                }
+              }}
+              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg
+                         bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-medium
+                         border border-red-500/20 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Bileti Kaldır
+            </button>
+          )}
+        </div>
       )}
     </div>
   )

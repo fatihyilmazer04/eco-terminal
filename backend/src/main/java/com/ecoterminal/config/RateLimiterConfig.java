@@ -6,6 +6,7 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisURI;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -24,6 +25,7 @@ public class RateLimiterConfig {
      * Birden fazla backend instance çalışsa bile IP başına bucket Redis'te ortaklaşa tutulur.
      */
     @Bean
+    @ConditionalOnProperty(name = "app.rate-limit.redis.enabled", havingValue = "true", matchIfMissing = true)
     public ProxyManager<byte[]> lettuceProxyManager() {
         RedisURI uri = RedisURI.builder()
                 .withHost(redisHost)

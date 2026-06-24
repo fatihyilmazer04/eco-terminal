@@ -4,11 +4,11 @@ import com.ecoterminal.exception.BusinessException;
 import com.ecoterminal.model.dto.EnergyResponse;
 import com.ecoterminal.model.dto.EnergySettingRequest;
 import com.ecoterminal.model.dto.EnergySettingResponse;
-import com.ecoterminal.model.dto.EnergyTrendPoint;
 import com.ecoterminal.model.dto.SavingSuggestion;
 import com.ecoterminal.model.entity.EnvironmentalMetric;
 import com.ecoterminal.model.entity.OccupancyReading;
 import com.ecoterminal.model.entity.Zone;
+import com.ecoterminal.model.entity.ZoneStatus;
 import com.ecoterminal.model.entity.ZoneType;
 import com.ecoterminal.repository.EnvironmentalMetricRepository;
 import com.ecoterminal.repository.OccupancyReadingRepository;
@@ -56,26 +56,33 @@ public class EnergyService {
 
     @Transactional(readOnly = true)
     public List<EnergyResponse> getAllZonesEnergy() {
-        // Tek sorguda tüm son metrikler
+        // environmental_metrics kaydı olan zone'ların son metrikleri (zone başına 1 satır)
         Map<Long, EnvironmentalMetric> metricsByZoneId = metricRepository.findLatestPerZone()
                 .stream()
                 .collect(Collectors.toMap(
                         m -> m.getZone().getZoneId(), m -> m,
                         (existing, duplicate) -> existing));
 
-        // Tek sorguda tüm son doluluklar
+        // Tüm son doluluklar
         Map<Long, Float> densityByZoneId = occupancyRepository.findLatestPerZone()
                 .stream()
                 .collect(Collectors.toMap(
                         r -> r.getZone().getZoneId(),
                         OccupancyReading::getDensityPct,
-                        (existing, duplicate) -> existing
-                ));
+                        (existing, duplicate) -> existing));
 
-        return metricsByZoneId.values().stream()
-                .map(m -> {
-                    float density = densityByZoneId.getOrDefault(m.getZone().getZoneId(), 0f);
-                    return EnergyResponse.from(m, density);
+        // Tüm aktif zone'lar üzerinden iterate et.
+        // Gerçek metriği olan zone'lar: from(metric, density)
+        // Metriği olmayan zone'lar: doluluktan türetilmiş kWh/temp tahmini
+        return zoneRepository.findByStatusOrderByZoneNameAsc(ZoneStatus.ACTIVE)
+                .stream()
+                .map(zone -> {
+                    EnvironmentalMetric metric = metricsByZoneId.get(zone.getZoneId());
+                    float density = densityByZoneId.getOrDefault(zone.getZoneId(), 0f);
+                    if (metric != null) {
+                        return EnergyResponse.from(metric, density);
+                    }
+                    return EnergyResponse.fromZone(zone, density, deriveKwh(density), deriveTemp(density));
                 })
                 .sorted(Comparator.comparing(EnergyResponse::zoneId))
                 .toList();
@@ -120,27 +127,6 @@ public class EnergyService {
                 e.densityPct(), e.energyKwh(),
                 suggestion, potentialSavingPct
         );
-    }
-
-    // ── Enerji Trendi ────────────────────────────────────────────────────
-
-    /**
-     * Son X saatin metriklerini nokta nokta döndürür — grafik için.
-     */
-    @Transactional(readOnly = true)
-    public List<EnergyTrendPoint> getEnergyTrend(Long zoneId, int lastHours) {
-        Zone zone = zoneRepository.findById(zoneId)
-                .orElseThrow(() -> BusinessException.notFound("Bölge"));
-
-        Instant start = Instant.now().minus(lastHours, ChronoUnit.HOURS);
-        Instant end   = Instant.now();
-
-        return metricRepository
-                .findByZoneAndRecordedAtBetweenOrderByRecordedAtAsc(zone, start, end)
-                .stream()
-                .map(m -> new EnergyTrendPoint(m.getRecordedAt(), m.getEnergyKwh(), m.getTemp()))
-
-                .toList();
     }
 
     // ── Bölge Ayar Güncelleme ────────────────────────────────────────────
@@ -199,6 +185,30 @@ public class EnergyService {
     }
 
     // ── Yardımcı ────────────────────────────────────────────────────────
+
+    /**
+     * Doluluk oranından türetilmiş enerji sabitleri.
+     * environmental_metrics kaydı olmayan zone'lar için fallback hesaplamada kullanılır.
+     *
+     * kWh  = BASE_KWH  + densityPct × PEAK_FACTOR   (densityPct: 0.0–1.0)
+     * temp = BASE_TEMP + densityPct × HEAT_FACTOR
+     *
+     * Örnek: %30 dolulukt → kWh = 5.0 + 0.30×15.0 = 9.5 kWh, temp = 20.0 + 0.30×8.0 = 22.4°C
+     */
+    private static final float BASE_KWH    = 5.0f;
+    private static final float PEAK_FACTOR = 15.0f;
+    private static final float BASE_TEMP   = 20.0f;
+    private static final float HEAT_FACTOR = 8.0f;
+
+    /** Doluluktan türetilen kWh tahmini (sensör verisi olmayan zone'lar için). */
+    private static float deriveKwh(float densityPct) {
+        return BASE_KWH + densityPct * PEAK_FACTOR;
+    }
+
+    /** Doluluktan türetilen sıcaklık tahmini (sensör verisi olmayan zone'lar için). */
+    private static float deriveTemp(float densityPct) {
+        return BASE_TEMP + densityPct * HEAT_FACTOR;
+    }
 
     /** Toplam kWh — AdminDashboardService için */
     @Transactional(readOnly = true)

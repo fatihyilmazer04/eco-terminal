@@ -52,24 +52,35 @@ spring:
     baseline-on-migrate: true
     validate-on-migrate: true
 
+# ── Resend Email API ─────────────────────────────────────────────────────────
+resend:
+  api-key: ${RESEND_API_KEY:}
+  from: ${MAIL_FROM:noreply@ecoterminal.com}
+
 # ── JWT ─────────────────────────────────────────────────────────────────────
 jwt:
   # Üretimde mutlaka güçlü, rastgele 256-bit Base64 secret kullanın
   secret: ${JWT_SECRET:eco-terminal-super-secret-key-must-be-at-least-256-bits-long-for-hs256}
-  access-token-expiration: 900000        # 15 dakika (ms)
+  access-token-expiration: 7200000       # 2 saat (JMeter testi için geçici)
   refresh-token-expiration: 604800000    # 7 gün (ms)
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 cors:
-  allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:3000}
+  # Virgülle ayrılmış origin listesi. Glob pattern desteklenir (setAllowedOriginPatterns).
+  # http://192.168.*.*:* → LAN'daki herhangi bir cihazdan erişime izin verir (dev ortamı)
+  allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:3000,http://192.168.*.*:*}
 
 # ── AI Service ──────────────────────────────────────────────────────────────
 ai-service:
   base-url: ${AI_SERVICE_URL:http://localhost:5000}
 
+# ── YOLOv8 Service ──────────────────────────────────────────────────────────
+yolov8-service:
+  base-url: ${YOLO_SERVICE_URL:http://yolov8-service:5001}
+
 # ── Server ──────────────────────────────────────────────────────────────────
 server:
-  port: 8080
+  port: ${PORT:8080}
   servlet:
     context-path: /
   tomcat:
@@ -103,20 +114,48 @@ spring.task.scheduling:
   pool:
     size: 4
 
+# ── Mail Modu ────────────────────────────────────────────────────────────────
+# true  → JavaMailSender ile gerçek Gmail SMTP kullan
+# false → DEMO MODU: kod sadece backend log'una yazılır, mail gönderilmez
+app:
+  mail:
+    enabled: ${MAIL_ENABLED:false}
+
+  # ── Internal Service Token ──────────────────────────────────────────────────
+  # llm-service bu token'ı X-Internal-Token header'ında gönderir.
+  # Üretimde güçlü bir random string kullanın (openssl rand -hex 32).
+  internal:
+    token: ${LLM_SERVICE_INTERNAL_TOKEN:default-dev-token}
+
+  # ── Demo Modu — Sabit Heatmap ───────────────────────────────────────────────
+  # true  → DemoOccupancyProvider sabit değerleri kullanılır, simülatör devre dışı
+  # false → Canlı DB okumaları kullanılır (Manuel görüntü analizi akışı)
+  demo:
+    fixed-heatmap: false
+
+  # ── Chatbot / LLM ──────────────────────────────────────────────────────────
+  chatbot:
+    default-provider: llm-service    # "cloud" | "local" | "llm-service"
+    gemini:
+      api-key: ${GEMINI_API_KEY:}    # Google AI Studio'dan alınan API anahtarı
+      model: gemini-pro              # gemini-pro | gemini-1.5-flash | gemini-2.0-flash
+    llm-service:
+      url: ${LLM_SERVICE_URL:http://llm-service:5002}  # FastAPI RAG servisi
+
 # ── Demo Veri Tazeleme ────────────────────────────────────────────────────────
 # false yapılınca DemoDataRefresher çalışmaz (production ortamı için)
 demo:
   refresh-flights: true
 
-# ── Swagger / OpenAPI (Faz 8) ────────────────────────────────────────────────
+# ── Swagger / OpenAPI ────────────────────────────────────────────────────────
+# Erişim: Yalnızca ADMIN — SecurityConfig.java > hasRole("ADMIN")
+# Swagger UI : /swagger-ui/index.html  (JWT ile giriş yaptıktan sonra)
+# OpenAPI JSON: /api-docs
 springdoc:
   api-docs:
     path: /api-docs
   swagger-ui:
-    path: /swagger-ui.html
+    path: /swagger-ui/index.html
     operationsSorter: method
     tagsSorter: alpha
-  info:
-    title: Eco-Terminal API
-    description: Akıllı Havalimanı Yoğunluk ve Enerji Yönetim Sistemi
-    version: 1.0.0
+    disable-swagger-default-url: true

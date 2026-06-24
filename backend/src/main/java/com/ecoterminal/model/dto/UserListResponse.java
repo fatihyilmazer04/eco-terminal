@@ -10,6 +10,7 @@ import java.time.Instant;
 public record UserListResponse(
         Long userId,
         String email,
+        String fullName,        // user_profiles.first_name + last_name (null ise profil yok)
         String role,
         Boolean isActive,
         Instant lastLogin,
@@ -19,6 +20,19 @@ public record UserListResponse(
         return new UserListResponse(
                 u.getUserId(),
                 u.getEmail(),
+                null,
+                u.getRole().name(),
+                u.getIsActive(),
+                u.getLastLogin(),
+                u.getCreatedAt()
+        );
+    }
+
+    public static UserListResponse from(User u, String fullName) {
+        return new UserListResponse(
+                u.getUserId(),
+                u.getEmail(),
+                fullName,
                 u.getRole().name(),
                 u.getIsActive(),
                 u.getLastLogin(),

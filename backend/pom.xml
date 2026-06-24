@@ -20,6 +20,8 @@
     <properties>
         <java.version>21</java.version>
         <jjwt.version>0.12.5</jjwt.version>
+        <!-- Varsayılan: IntegrationTest sınıfları hariç — mvn test -Dintegration.test.exclude="" ile geçersiz kılınır -->
+        <integration.test.exclude>**/*IntegrationTest.java</integration.test.exclude>
     </properties>
 
     <dependencies>
@@ -126,6 +128,8 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
+        <!-- Email — Resend API ile doğrulama kodu gönderimi (SMTP yerine HTTP) -->
+
         <!-- Firebase Admin SDK — FCM push bildirimleri için -->
         <dependency>
             <groupId>com.google.firebase</groupId>
@@ -151,6 +155,13 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Apache HttpClient 5 — TestRestTemplate'in PATCH metodunu desteklemesi için -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- TestContainers — Faz 8 integration testleri için -->
         <dependency>
             <groupId>org.testcontainers</groupId>
@@ -167,12 +178,20 @@
     <build>
         <plugins>
             <!-- Surefire: varsayılan 'mvn test' sadece unit testleri çalıştırır -->
-            <!-- Integration testleri: mvn test -Dgroups=integration -->
+            <!--
+                Unit testler (default): mvn test
+                Integration testler   : mvn test -Dskip.unit.tests=true
+                                        veya mvn test -Dtest="*IntegrationTest"
+                Tüm testler           : mvn test -DexcludeIntegration=false
+            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <excludedGroups>integration</excludedGroups>
+                    <!-- Varsayılan: IntegrationTest sınıfları hariç tutulur -->
+                    <excludes>
+                        <exclude>${integration.test.exclude}</exclude>
+                    </excludes>
                 </configuration>
             </plugin>
 
@@ -185,6 +204,62 @@
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
                         </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <!-- JaCoCo — Test Coverage Raporu -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.11</version>
+                <executions>
+                    <!-- test öncesi agent'ı başlat -->
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals><goal>prepare-agent</goal></goals>
+                    </execution>
+                    <!-- test sonrası HTML/XML rapor üret -->
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals><goal>report</goal></goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <excludes>
+                        <!-- Uygulama giriş noktası -->
+                        <exclude>com/ecoterminal/EcoTerminalApplication.class</exclude>
+                        <!-- Entity sınıfları — sadece getter/setter, iş mantığı yok -->
+                        <exclude>com/ecoterminal/model/entity/**</exclude>
+                        <!-- DTO / Request / Response — veri taşıyıcı, test edilmez -->
+                        <exclude>com/ecoterminal/model/dto/**</exclude>
+                        <!-- Spring konfigürasyonları — framework yönetir -->
+                        <exclude>com/ecoterminal/config/**</exclude>
+                        <!-- Exception sınıfları — basit wrapper -->
+                        <exclude>com/ecoterminal/exception/BusinessException.class</exclude>
+                        <exclude>com/ecoterminal/exception/AiServiceException.class</exclude>
+                        <exclude>com/ecoterminal/exception/ResourceNotFoundException.class</exclude>
+                        <!-- Dış bağımlılıklar — AI/Firebase/Mail, birim test yazılamaz -->
+                        <exclude>com/ecoterminal/service/AIPredictionClient.class</exclude>
+                        <exclude>com/ecoterminal/service/FcmService.class</exclude>
+                        <exclude>com/ecoterminal/service/EmailService.class</exclude>
+                        <!-- Zamanlayıcılar — @Scheduled, entegrasyon ortamı gerektirir -->
+                        <exclude>com/ecoterminal/service/CrowdAlertScheduler.class</exclude>
+                        <exclude>com/ecoterminal/service/DemoDataRefresher.class</exclude>
+                        <exclude>com/ecoterminal/service/YoloWarmupScheduler.class</exclude>
+                        <exclude>com/ecoterminal/service/DataRetentionScheduler.class</exclude>
+                        <!-- Dış servis entegrasyonları — AI/YOLO/LLM HTTP çağrısı yapar -->
+                        <exclude>com/ecoterminal/service/AIPredictionService.class</exclude>
+                        <exclude>com/ecoterminal/service/YoloService.class</exclude>
+                        <exclude>com/ecoterminal/service/chatbot/LlmServiceProvider.class</exclude>
+                        <exclude>com/ecoterminal/service/chatbot/GeminiChatbotProvider.class</exclude>
+                        <!-- Rapor üretimi — karmaşık SQL/string/AI, dış bağımlı -->
+                        <exclude>com/ecoterminal/service/ReportNarrativeService.class</exclude>
+                        <exclude>com/ecoterminal/service/ReportNarrativeService$*.class</exclude>
+                        <exclude>com/ecoterminal/service/ReportService.class</exclude>
+                        <!-- Demo veri sağlayıcı — test ortamında devre dışı -->
+                        <exclude>com/ecoterminal/service/DemoOccupancyProvider.class</exclude>
                     </excludes>
                 </configuration>
             </plugin>

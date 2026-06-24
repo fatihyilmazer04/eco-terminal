@@ -11,7 +11,8 @@ import java.time.Instant;
     name = "tickets",
     indexes = {
         @Index(name = "idx_tickets_user",   columnList = "user_id"),
-        @Index(name = "idx_tickets_flight", columnList = "flight_id")
+        @Index(name = "idx_tickets_flight", columnList = "flight_id"),
+        @Index(name = "idx_tickets_pnr",    columnList = "pnr_code")
     }
 )
 @Getter
@@ -26,25 +27,37 @@ public class Ticket {
     @Column(name = "ticket_id")
     private Long ticketId;
 
+    /**
+     * nullable = true: claim edilmemiş biletler user'sız olabilir.
+     * Kullanıcı PNR ile bileti claim edince bu alan set edilir.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_id", nullable = true)
     private User user;
 
-    /**
-     * EAGER fetch: bilet okunduğunda uçuş bilgisi de gerekli (tek sorgu).
-     * N+1 yerine JOIN ile getirilir.
-     */
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "flight_id", nullable = false)
     private Flight flight;
 
+    /**
+     * PNR kodu — admin tarafından üretilir, yolcu bu kodla bileti claim eder.
+     * Format: "TK-A3F2B1", "PC-X7K2M9"
+     */
+    @Column(name = "pnr_code", unique = true, length = 10)
+    private String pnrCode;
+
+    /** Bilet sahibinin adı (admin girişi, claim sonrası zorunlu değil). */
+    @Column(name = "passenger_name", length = 100)
+    private String passengerName;
+
+    /** Bilet durumu: ACTIVE, CANCELLED */
+    @Column(name = "ticket_status", nullable = false, length = 20)
+    @Builder.Default
+    private String ticketStatus = "ACTIVE";
+
     @Column(name = "seat_number", length = 10)
     private String seatNumber;
 
-    /**
-     * "class" Java keyword'ü olduğu için alan adı seatClass,
-     * DB sütun adı "class" olarak eşleniyor.
-     */
     @Enumerated(EnumType.STRING)
     @Column(name = "class", nullable = false, length = 20)
     @Builder.Default

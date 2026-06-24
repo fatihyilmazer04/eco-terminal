@@ -1,11 +1,13 @@
 package com.ecoterminal.config;
 
 import com.ecoterminal.security.CustomUserDetailsService;
+import com.ecoterminal.security.InternalTokenFilter;
 import com.ecoterminal.security.JwtAuthFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
@@ -34,6 +36,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final InternalTokenFilter internalTokenFilter;
     private final CustomUserDetailsService userDetailsService;
 
     @Value("${cors.allowed-origins:http://localhost:5173,http://localhost:3000}")
@@ -69,7 +72,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/actuator/prometheus").permitAll()
 
-                        // Swagger / OpenAPI
+                        // Swagger UI + OpenAPI spec — herkese açık
+                        // (Asıl koruma API endpoint seviyesinde JWT ile sağlanıyor)
                         .requestMatchers(
                                 "/swagger-ui/**", "/swagger-ui.html",
                                 "/api-docs/**", "/v3/api-docs/**"
@@ -89,6 +93,21 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
 
+                // Kimlik doğrulama hatası → 401, yetki hatası → 403
+                // sendError() kullanmıyoruz — Tomcat /error dispatcher'ını tetikleyip 401'e dönüştürür
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((req, res, e) -> {
+                            res.setContentType("application/json;charset=UTF-8");
+                            res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            res.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"" + e.getMessage() + "\"}");
+                        })
+                        .accessDeniedHandler((req, res, e) -> {
+                            res.setContentType("application/json;charset=UTF-8");
+                            res.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            res.getWriter().write("{\"error\":\"Forbidden\",\"message\":\"" + e.getMessage() + "\"}");
+                        })
+                )
+
                 // Session yok — her istek JWT ile doğrulanır
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
@@ -96,6 +115,9 @@ public class SecurityConfig {
 
                 // Authentication provider
                 .authenticationProvider(authenticationProvider())
+
+                // Internal service token filtresi — JWT'den ÖNCE çalışır
+                .addFilterBefore(internalTokenFilter, UsernamePasswordAuthenticationFilter.class)
 
                 // JWT filtresi, UsernamePasswordAuthenticationFilter'dan önce çalışır
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
@@ -108,8 +130,9 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
 
         // İzin verilen origin'ler — .env'den okunabilir
+        // setAllowedOriginPatterns glob destekler: http://192.168.*.*:* LAN erişimine izin verir
         List<String> origins = List.of(allowedOrigins.split(","));
-        config.setAllowedOrigins(origins);
+        config.setAllowedOriginPatterns(origins);
 
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With"));

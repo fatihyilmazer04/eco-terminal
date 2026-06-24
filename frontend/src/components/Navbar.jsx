@@ -1,34 +1,25 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useLoyaltyContext } from '../context/LoyaltyContext'
 import { useNotifications } from '../hooks/useNotifications'
 import NotificationBell from './NotificationBell'
 import EcoPointsBadge from './EcoPointsBadge'
-import { loyaltyApi } from '../api/loyaltyApi'
 
 /**
  * Yolcu sayfaları için üst navigasyon çubuğu.
  * - Sol: Eco-Terminal logo + yeşil sistem aktif noktası
- * - Sağ: NotificationBell + kullanıcı adı + çıkış
+ * - Sağ: NotificationBell + eko puan badge + Ayarlar + çıkış
  * - Admin modunda: "Admin Panel" kırmızı badge
  * - Mobil: hamburger menü
+ * Eko-puan durumu LoyaltyContext'ten okunur — earn/spend sonrası anında güncellenir.
  */
 export default function Navbar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications()
-  const [walletBalance, setWalletBalance] = useState(null)
-  const [walletTier, setWalletTier]       = useState('GREEN')
-
-  useEffect(() => {
-    loyaltyApi.getWallet()
-      .then(r => {
-        setWalletBalance(r.data.data?.currentBalance ?? 0)
-        setWalletTier(r.data.data?.tierLevel ?? 'GREEN')
-      })
-      .catch(() => {})
-  }, [])
+  const { balance: walletBalance, tierLevel: walletTier } = useLoyaltyContext()
 
   const handleLogout = () => {
     logout()
@@ -45,10 +36,13 @@ export default function Navbar() {
           <Link to={isAdmin ? '/admin/dashboard' : '/passenger/dashboard'}
                 className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
-              <div className="w-6 h-6 rounded-md bg-eco-green/20 border border-eco-green/40
-                              flex items-center justify-center">
-                <span className="text-eco-green text-xs font-bold">E</span>
-              </div>
+              <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="28" height="28" rx="6" fill="#0F2240"/>
+                <path d="M14 5C14 5 9 9 9 14c0 3.5 1.5 5.5 4 7" stroke="#2ECC71" strokeWidth="1.6" strokeLinecap="round" fill="none"/>
+                <path d="M14 5c0 0 5 4 5 9 0 3.5-1.5 5.5-4 7" stroke="#2ECC71" strokeWidth="1.6" strokeLinecap="round" fill="none" opacity="0.4"/>
+                <path d="M10 21C11 23 12.5 23.5 14 25c1.5-1.5 3-2 4-4" stroke="#2ECC71" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                <circle cx="14" cy="14" r="2" fill="#2ECC71" opacity="0.9"/>
+              </svg>
               <span className="text-white font-semibold text-sm hidden sm:block">Eco-Terminal</span>
             </div>
             {/* Sistem aktif göstergesi */}
@@ -103,7 +97,7 @@ export default function Navbar() {
             <div className="hidden sm:flex items-center gap-2">
               <Link to="/passenger/profile"
                     className="text-gray-400 text-xs hover:text-white transition-colors">
-                {user?.fullName?.split(' ')[0] ?? user?.email}
+                Ayarlar
               </Link>
               <button
                 onClick={handleLogout}
@@ -140,7 +134,7 @@ export default function Navbar() {
             <MobileLink to="/passenger/lounges"        label="Salonlar"           onClick={() => setMobileOpen(false)} />
             <MobileLink to="/passenger/rewards"        label="🌿 Ödüller"          onClick={() => setMobileOpen(false)} />
             <MobileLink to="/passenger/notifications"   label={`Bildirimler${unreadCount > 0 ? ` (${unreadCount})` : ''}`} onClick={() => setMobileOpen(false)} />
-            <MobileLink to="/passenger/profile"         label="Profilim"           onClick={() => setMobileOpen(false)} />
+            <MobileLink to="/passenger/profile"         label="Ayarlar"            onClick={() => setMobileOpen(false)} />
             {isAdmin && (
               <MobileLink to="/admin/dashboard" label="Admin Panel" onClick={() => setMobileOpen(false)} />
             )}

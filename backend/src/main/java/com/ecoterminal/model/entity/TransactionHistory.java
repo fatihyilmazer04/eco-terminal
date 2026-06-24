@@ -41,6 +41,9 @@ public class TransactionHistory {
     @Column(name = "description", length = 500)
     private String description;
 
+    @Column(name = "redemption_code", length = 30)
+    private String redemptionCode;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

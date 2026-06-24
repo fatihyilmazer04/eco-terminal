@@ -13,4 +13,7 @@ public interface TransactionHistoryRepository extends JpaRepository<TransactionH
     List<TransactionHistory> findByWallet_WalletIdOrderByCreatedAtDesc(Long walletId);
 
     List<TransactionHistory> findByWallet_WalletIdAndTransType(Long walletId, TransType transType);
+
+    /** Kullanıcının tüm redemption kodları (redemption_code NULL olmayanlar) */
+    List<TransactionHistory> findByWallet_WalletIdAndRedemptionCodeIsNotNullOrderByCreatedAtDesc(Long walletId);
 }

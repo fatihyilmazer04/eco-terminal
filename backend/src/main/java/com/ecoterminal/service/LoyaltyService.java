@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
 import java.util.List;
 
 @Slf4j
@@ -23,9 +24,12 @@ public class LoyaltyService {
     private final UserRepository            userRepository;
     private final NotificationService       notifService;
 
+    private static final SecureRandom RNG   = new SecureRandom();
+    private static final String       CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
     // ── Cüzdan ────────────────────────────────────────────────────────────
 
-    @Transactional(readOnly = true)
+    @Transactional
     public WalletResponse getWallet(Long userId) {
         EcoWallet wallet = getOrCreateWallet(userId);
         return WalletResponse.from(wallet);
@@ -101,22 +105,50 @@ public class LoyaltyService {
         updateTierLevel(wallet);
         walletRepo.save(wallet);
 
+        String redemptionCode = generateRedemptionCode(
+                reward.getRewardType() != null ? reward.getRewardType().name() : null);
+
         TransactionHistory tx = TransactionHistory.builder()
                 .wallet(wallet)
                 .reward(reward)
                 .amount(reward.getCostPoints())
                 .transType(TransType.SPEND)
                 .description(reward.getTitle() + " ödülü kullanıldı")
+                .redemptionCode(redemptionCode)
                 .build();
         txRepo.save(tx);
 
-        log.info("Puan harcandı: userId={} -{} ({})", userId, reward.getCostPoints(), reward.getTitle());
-        return new SpendResponse(reward.getTitle(), wallet.getCurrentBalance(), wallet.getTierLevel().name());
+        // Ödül alım bildirimi
+        notifService.sendManual(new ManualNotificationRequest(
+                userId,
+                "🎁 Ödül Alındı!",
+                reward.getTitle() + " ödülünüz hazır! Kodunuz: " + redemptionCode,
+                NotificationType.REWARD
+        ));
+
+        log.info("Puan harcandı: userId={} -{} ({}) kod={}", userId, reward.getCostPoints(), reward.getTitle(), redemptionCode);
+        return new SpendResponse(reward.getTitle(), wallet.getCurrentBalance(), wallet.getTierLevel().name(), redemptionCode);
+    }
+
+    // ── Redemption Code Üretimi ───────────────────────────────────────────
+
+    private String generateRedemptionCode(String rewardType) {
+        String prefix = switch (rewardType != null ? rewardType : "") {
+            case "COFFEE"        -> "COFFEE";
+            case "LOUNGE_ACCESS" -> "LOUNGE";
+            case "UPGRADE"       -> "UPGRADE";
+            case "DISCOUNT"      -> "DUTY";
+            case "PRIORITY"      -> "PRIOR";
+            default              -> "REWARD";
+        };
+        StringBuilder sb = new StringBuilder(6);
+        for (int i = 0; i < 6; i++) sb.append(CHARS.charAt(RNG.nextInt(CHARS.length())));
+        return "REWARD-" + prefix + "-" + sb;
     }
 
     // ── İşlem Geçmişi ────────────────────────────────────────────────────
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<TransactionResponse> getTransactionHistory(Long userId) {
         EcoWallet wallet = getOrCreateWallet(userId);
         return txRepo.findByWallet_WalletIdOrderByCreatedAtDesc(wallet.getWalletId())
@@ -125,9 +157,20 @@ public class LoyaltyService {
                 .toList();
     }
 
+    // ── Sahip Olunan Kodlar ───────────────────────────────────────────────
+
+    @Transactional
+    public List<RedemptionResponse> getMyRedemptions(Long userId) {
+        EcoWallet wallet = getOrCreateWallet(userId);
+        return txRepo.findByWallet_WalletIdAndRedemptionCodeIsNotNullOrderByCreatedAtDesc(wallet.getWalletId())
+                .stream()
+                .map(RedemptionResponse::from)
+                .toList();
+    }
+
     // ── Ödül Kataloğu ────────────────────────────────────────────────────
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<RewardResponse> getRewardCatalog(Long userId) {
         int balance = getOrCreateWallet(userId).getCurrentBalance();
         return rewardRepo.findByIsActiveTrue()
@@ -140,12 +183,13 @@ public class LoyaltyService {
 
     public int calculatePointsForAction(String action) {
         return switch (action.toUpperCase()) {
-            case "QUIET_ZONE_WAIT"  -> 10;
-            case "FLIGHT_CHECKIN"   -> 25;
-            case "ECO_ROUTE_USED"   -> 15;
-            case "ROUTE_SELECTION"  -> 50;
-            case "LOUNGE_CHECKIN"   -> 20;
-            default                 -> 5;
+            case "QUIET_ZONE_WAIT"   -> 10;
+            case "FLIGHT_CHECKIN"    -> 25;
+            case "ECO_ROUTE_USED"    -> 15;
+            case "ROUTE_SELECTION"   -> 50;   // geriye uyumluluk
+            case "ROUTE_COMPLETION"  -> 50;   // yeni: adım bazlı doğrulamalı rota tamamlama
+            case "LOUNGE_CHECKIN"    -> 20;
+            default                  -> 5;
         };
     }
 

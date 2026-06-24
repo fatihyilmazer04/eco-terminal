@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell, LineChart, Line, Legend
+  ResponsiveContainer, Cell
 } from 'recharts'
 import KpiCard from '../../components/KpiCard'
-import { useEnergy, useEnergyTrend } from '../../hooks/useEnergy'
+import { useEnergy } from '../../hooks/useEnergy'
 import { energyApi } from '../../api/adminApi'
 import toast from 'react-hot-toast'
 
@@ -14,11 +14,6 @@ const STATUS_BADGE  = {
   WASTEFUL: 'text-red-400 bg-red-500/10 border border-red-500/30',
   EFFICIENT:'text-eco-green bg-eco-green/10 border border-eco-green/30',
   NORMAL:   'text-gray-400 bg-gray-700/50 border border-gray-600',
-}
-const PRIORITY_BADGE = {
-  HIGH:   'text-red-400 bg-red-500/10 border border-red-500/30',
-  MEDIUM: 'text-yellow-400 bg-yellow-500/10 border border-yellow-500/30',
-  LOW:    'text-eco-green bg-eco-green/10 border border-eco-green/30',
 }
 
 const TEMP_MIN = 16
@@ -138,40 +133,15 @@ function InlineControl({ zone, onUpdate }) {
 
 export default function EnergyManagement() {
   const { usage: rawUsage, savings, loadingUsage, error } = useEnergy()
-  const [usage, setUsage]                   = useState(null) // optimistic override
-  const [selectedZoneId, setSelectedZoneId] = useState(null)
-  const [trendRange, setTrendRange]         = useState(3)
-  const [aiRecs, setAiRecs]                 = useState([])
-  const [loadingRecs, setLoadingRecs]       = useState(false)
-  const [showRecs, setShowRecs]             = useState(false)
+  const [usage, setUsage] = useState(null) // optimistic override
 
   const effectiveUsage = usage ?? rawUsage
-
-  const zoneId = selectedZoneId ?? effectiveUsage[0]?.zoneId
-  const { data: trend } = useEnergyTrend(zoneId, 24)
 
   function handleUpdate(zoneId, patch) {
     setUsage(prev => {
       const base = prev ?? rawUsage
       return base.map(z => z.zoneId === zoneId ? { ...z, ...patch } : z)
     })
-  }
-
-  async function loadAiRecs() {
-    setLoadingRecs(true)
-    setShowRecs(true)
-    try {
-      // Flask AI servisine doğrudan gitmiyor — backend proxy üzerinden
-      const res = await import('../../api/axiosInstance').then(m =>
-        m.default.get('/api/energy/recommendations/all')
-      )
-      setAiRecs(res.data?.recommendations ?? [])
-    } catch {
-      // AI servisi kapalıysa boş bırak, hata gösterme
-      setAiRecs([])
-    } finally {
-      setLoadingRecs(false)
-    }
   }
 
   if (loadingUsage) return <EnergySkeleton />
@@ -188,29 +158,12 @@ export default function EnergyManagement() {
     status: z.efficiencyStatus,
   }))
 
-  const historyData = trend.map(p => ({
-    label: `${String(new Date(p.timestamp).getHours()).padStart(2, '0')}:00`,
-    kwh:   parseFloat((p.energyKwh ?? 0).toFixed(2)),
-    temp:  parseFloat((p.temp ?? 0).toFixed(1)),
-  }))
-  const trendData = historyData.slice(-trendRange)
-
   return (
     <div className="flex-1 p-6 space-y-6 overflow-auto">
       {/* Başlık */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Enerji Yönetimi</h1>
-          <p className="text-gray-400 text-sm mt-0.5">Bölgesel enerji tüketimi, verimlilik analizi ve akıllı kontrol</p>
-        </div>
-        <button
-          onClick={loadAiRecs}
-          disabled={loadingRecs}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/30
-                     text-purple-400 text-sm hover:bg-purple-500/20 transition-colors disabled:opacity-50"
-        >
-          {loadingRecs ? '...' : '⚡'} AI Öneriler
-        </button>
+      <div>
+        <h1 className="text-2xl font-bold text-white">Enerji Yönetimi</h1>
+        <p className="text-gray-400 text-sm mt-0.5">Bölgesel enerji tüketimi, verimlilik analizi ve akıllı kontrol</p>
       </div>
 
       {error && (
@@ -229,63 +182,13 @@ export default function EnergyManagement() {
                  color={savings.length > 0 ? 'yellow' : 'green'} />
       </div>
 
-      {/* AI Öneri Tablosu */}
-      {showRecs && (
-        <div className="bg-gray-800 rounded-xl border border-purple-500/20 overflow-hidden">
-          <div className="p-4 border-b border-gray-700 flex items-center justify-between">
-            <h2 className="text-white font-semibold">AI Enerji Önerileri</h2>
-            <button onClick={() => setShowRecs(false)} className="text-gray-500 hover:text-gray-300 text-xs">Kapat</button>
-          </div>
-          {loadingRecs ? (
-            <div className="p-6 text-center text-gray-500 text-sm animate-pulse">Öneriler yükleniyor...</div>
-          ) : aiRecs.length === 0 ? (
-            <div className="p-6 text-center text-gray-500 text-sm">AI servisi kapalı veya öneri yok.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-gray-400 text-left border-b border-gray-700">
-                    <th className="px-4 py-2.5 font-medium">Bölge</th>
-                    <th className="px-4 py-2.5 font-medium text-center">Öncelik</th>
-                    <th className="px-4 py-2.5 font-medium text-right">Doluluk</th>
-                    <th className="px-4 py-2.5 font-medium text-right">kWh</th>
-                    <th className="px-4 py-2.5 font-medium text-right">Tasarruf</th>
-                    <th className="px-4 py-2.5 font-medium">Öneri</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-700/50">
-                  {aiRecs.map(r => (
-                    <tr key={r.zone_id} className="hover:bg-gray-700/30 transition-colors">
-                      <td className="px-4 py-3 text-white font-medium">{r.zone_name}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${PRIORITY_BADGE[r.priority] ?? ''}`}>
-                          {r.priority}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-300">%{((r.density_pct ?? 0) * 100).toFixed(0)}</td>
-                      <td className="px-4 py-3 text-right text-gray-300">{r.energy_kwh?.toFixed(1)}</td>
-                      <td className="px-4 py-3 text-right text-eco-green font-medium">
-                        {r.estimated_saving_pct > 0 ? `~%${r.estimated_saving_pct}` : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-400">
-                        {r.recommendations?.join(' · ')}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* BarChart */}
       <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
         <h2 className="text-white font-semibold mb-4">Bölge Bazlı Enerji Karşılaştırması (kWh)</h2>
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={barData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+        <ResponsiveContainer width="100%" height={240}>
+          <BarChart data={barData} margin={{ top: 5, right: 10, left: -10, bottom: 40 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis dataKey="name" tick={{ fill: '#9CA3AF', fontSize: 11 }} tickLine={false} />
+            <XAxis dataKey="name" tick={{ fill: '#9CA3AF', fontSize: 10, angle: -35, textAnchor: 'end' }} tickLine={false} interval={0} />
             <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} tickLine={false} axisLine={false} />
             <Tooltip
               contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '0.5rem', fontSize: '12px' }}
@@ -334,10 +237,9 @@ export default function EnergyManagement() {
                 return (
                   <tr
                     key={z.zoneId}
-                    className={`transition-colors cursor-pointer ${
+                    className={`transition-colors ${
                       isWasteful ? 'bg-yellow-500/5 hover:bg-yellow-500/10' : 'hover:bg-gray-700/30'
-                    } ${selectedZoneId === z.zoneId ? 'ring-1 ring-inset ring-eco-green/30' : ''}`}
-                    onClick={() => setSelectedZoneId(z.zoneId)}
+                    }`}
                   >
                     <td className="px-4 py-3 text-white font-medium">{z.zoneName}</td>
                     <td className="px-4 py-3 text-right text-gray-300">
@@ -363,49 +265,6 @@ export default function EnergyManagement() {
             </tbody>
           </table>
         </div>
-      </div>
-
-      {/* Trend Grafiği */}
-      <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-white font-semibold">
-              {effectiveUsage.find(z => z.zoneId === zoneId)?.zoneName ?? '—'} — Enerji Trendi
-            </h2>
-            <p className="text-gray-500 text-xs mt-0.5">Satıra tıklayarak bölge seçin</p>
-          </div>
-          <div className="flex gap-2">
-            {[3, 6, 12].map(h => (
-              <button key={h} onClick={() => setTrendRange(h)}
-                className={`text-xs px-2.5 py-1 rounded-lg transition-colors ${
-                  trendRange === h
-                    ? 'bg-eco-green/20 text-eco-green border border-eco-green/40'
-                    : 'bg-gray-700 text-gray-400 border border-gray-600 hover:border-gray-500'
-                }`}>{h}s</button>
-            ))}
-          </div>
-        </div>
-        {trendData.length === 0 ? (
-          <p className="text-center text-gray-500 text-sm py-8">Trend verisi bulunamadı.</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={trendData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="label" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} interval="preserveStartEnd" />
-              <YAxis yAxisId="kwh" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} axisLine={false} />
-              <YAxis yAxisId="temp" orientation="right" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} axisLine={false} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '0.5rem', fontSize: '11px' }}
-                labelStyle={{ color: '#F9FAFB', marginBottom: 4 }}
-              />
-              <Legend wrapperStyle={{ fontSize: '11px', color: '#9CA3AF' }} />
-              <Line yAxisId="kwh" type="monotone" dataKey="kwh" name="Enerji (kWh)"
-                stroke="#F39C12" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
-              <Line yAxisId="temp" type="monotone" dataKey="temp" name="Sıcaklık (°C)"
-                stroke="#3B82F6" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        )}
       </div>
 
       {/* Tasarruf Önerileri */}

@@ -61,5 +61,5 @@ export function useHeatmap(intervalMs = 60000) {
     return () => { isMounted.current = false }
   }, [fetchLive, intervalMs])
 
-  return { data, loading, error, refresh, lastUpdated, refreshing }
+  return { data, loading, error, refresh, refetch: fetchLive, lastUpdated, refreshing }
 }

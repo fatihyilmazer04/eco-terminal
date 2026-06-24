@@ -1,11 +1,14 @@
 # =============================================================================
-# Test profili — Testcontainers PostgreSQL ile override edilir
-# @DynamicPropertySource DataSource URL'ini runtime'da set eder
+# Test profili
+# Yerel çalıştırma: eco-postgres-dev container (localhost:5432) kullanılır.
+# CI: GitHub Actions PostgreSQL service container (localhost:5432) kullanılır.
 # =============================================================================
 
 spring:
   datasource:
-    # URL, username, password @DynamicPropertySource ile override edilir
+    url: jdbc:postgresql://localhost:5432/ecoterminal
+    username: ecoterminal
+    password: ecoterminal123
     driver-class-name: org.postgresql.Driver
 
   flyway:
@@ -27,23 +30,49 @@ spring:
       pool:
         size: 1
 
+  # Redis — testlerde bağlantı hatası fırlatmasın
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 500ms
+      lettuce:
+        pool:
+          max-active: 1
+
 # JWT test secret (min 32 chars)
 jwt:
   secret: test_secret_key_minimum_32_characters_long_for_testing_purposes
   access-token-expiration: 900000
   refresh-token-expiration: 604800000
 
-# AI servisi mock (testlerde çağrılmayacak)
+# AI servisi testlerde çağrılmayacak
 ai-service:
   base-url: http://localhost:5000
 
-# Loglama seviyesini azalt
+# Mail devre dışı
+app:
+  mail:
+    enabled: false
+  internal:
+    token: default-dev-token
+  demo:
+    fixed-heatmap: false
+  rate-limit:
+    login:
+      capacity: 1000
+    redis:
+      enabled: false
+
+demo:
+  refresh-flights: false
+
+# Loglama
 logging:
   level:
     com.ecoterminal: INFO
     org.springframework.security: WARN
     org.flywaydb: INFO
-    org.testcontainers: WARN
 
 management:
   endpoints:

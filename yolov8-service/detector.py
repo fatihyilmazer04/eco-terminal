@@ -6,8 +6,9 @@ Gerçek veya sentetik görüntüden kişi sayar, DB'ye kaydeder.
 import base64
 import io
 import logging
+import os
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import numpy as np
 import psycopg2
@@ -72,6 +73,28 @@ def _get_zone_capacity(zone_id: int) -> int | None:
     except psycopg2.Error as e:
         logger.error("Zone kapasitesi alınamadı: %s", e)
         return None
+
+
+def _has_recent_live_reading(zone_id: int, minutes: int = 20) -> bool:
+    """
+    Son `minutes` dakika içinde zone için yolov8_live kaydı var mı?
+    Batch simülasyon bu zone'u atlamalı.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    sql = """
+        SELECT 1 FROM occupancy_readings
+        WHERE zone_id = %s AND source = 'yolov8_live'
+          AND recorded_at >= %s
+        LIMIT 1
+    """
+    try:
+        with _get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (zone_id, cutoff))
+                return cur.fetchone() is not None
+    except psycopg2.Error as e:
+        logger.error("Canlı okuma kontrolü hatası (zone=%d): %s", zone_id, e)
+        return False  # Hata durumunda simülasyona izin ver
 
 
 def _get_all_active_zones() -> list[dict]:
@@ -143,6 +166,7 @@ def detect_crowd(
     now = datetime.now(timezone.utc)
     confidence_scores = []
     people_count = 0
+    detections = []
 
     if image_source is None:
         # ── Kamera yok: sentetik sayım ───────────────────────────────────────
@@ -155,20 +179,27 @@ def detect_crowd(
         # ── Gerçek YOLO inference ─────────────────────────────────────────────
         try:
             # base64 → PIL Image → numpy
-            if isinstance(image_source, str) and not image_source.startswith("/"):
+            if isinstance(image_source, str) and not os.path.exists(image_source):
                 img_bytes = base64.b64decode(image_source)
                 image_source = np.array(Image.open(io.BytesIO(img_bytes)))
 
             model = get_model()
-            results = model(image_source, conf=CONF_THRESHOLD, verbose=False)
+            results = model(image_source, conf=CONF_THRESHOLD, iou=0.4, verbose=False)
 
             for result in results:
                 boxes = result.boxes
                 if boxes is not None:
-                    for cls, conf in zip(boxes.cls, boxes.conf):
-                        if int(cls.item()) == PERSON_CLASS_ID:
+                    for box in boxes:
+                        if int(box.cls[0].item()) == PERSON_CLASS_ID:
+                            conf = float(box.conf[0].item())
+                            x1, y1, x2, y2 = box.xyxy[0].tolist()
                             people_count += 1
-                            confidence_scores.append(float(conf.item()))
+                            confidence_scores.append(conf)
+                            detections.append({
+                                "bbox":       [round(x1, 1), round(y1, 1),
+                                               round(x2, 1), round(y2, 1)],
+                                "confidence": round(conf, 3),
+                            })
 
         except Exception as e:
             logger.error("YOLO inference hatası (zone=%d): %s", zone_id, e)
@@ -189,6 +220,7 @@ def detect_crowd(
         "confidence":   round(avg_conf, 3),
         "timestamp":    now.strftime("%Y-%m-%dT%H:%M:%S"),
         "source":       source_tag,
+        "detections":   detections,
     }
 
 
@@ -203,6 +235,12 @@ def batch_detect_all_zones() -> list[dict]:
     for zone in zones:
         zone_id  = zone["zone_id"]
         capacity = zone.get("max_capacity") or zone.get("capacity") or 100
+
+        # Son 20 dk içinde gerçek kamera analizi yapıldıysa simülasyonu atla
+        if _has_recent_live_reading(zone_id, minutes=20):
+            logger.info("Zone %d son 20dk'da canlı analiz aldı — simülatör atlandı", zone_id)
+            continue
+
         # Kamera yok → None geç, detect_crowd sentetik sayım yapar
         result = detect_crowd(
             image_source=None,

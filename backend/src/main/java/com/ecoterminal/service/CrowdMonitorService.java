@@ -5,20 +5,18 @@ import com.ecoterminal.model.dto.OccupancyTimeSeriesPoint;
 import com.ecoterminal.model.dto.ZoneCrowdStatusResponse;
 import com.ecoterminal.model.entity.*;
 import com.ecoterminal.repository.AIPredictionRepository;
-import com.ecoterminal.repository.EnvironmentalMetricRepository;
 import com.ecoterminal.repository.OccupancyReadingRepository;
 import com.ecoterminal.repository.ZoneMapPositionRepository;
 import com.ecoterminal.repository.ZoneRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -32,20 +30,26 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CrowdMonitorService {
 
-    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
     private static final int TREND_LOOKBACK = 4;
 
     private final ZoneRepository               zoneRepo;
     private final OccupancyReadingRepository   occupancyRepo;
     private final AIPredictionRepository       predictionRepo;
     private final ZoneMapPositionRepository    positionRepo;
-    private final EnvironmentalMetricRepository metricRepo;
+    private final DemoOccupancyProvider        demoProvider;
+
+    @Value("${app.demo.fixed-heatmap:true}")
+    private boolean demoMode;
 
     /**
      * Tüm terminal heatmap verisi — zone durumu + koordinatlar + AI + özet.
+     * Demo modunda DemoOccupancyProvider'dan sabit değerler döner.
      */
     @Transactional(readOnly = true)
     public HeatmapSummaryResponse getHeatmapData() {
+        if (demoMode) {
+            return demoProvider.buildHeatmapSummaryResponse();
+        }
 
         // 1. Her zone'un en son okuması (tek sorgu)
         Map<Long, OccupancyReading> latestByZoneId = occupancyRepo.findLatestPerZone()
@@ -126,50 +130,20 @@ public class CrowdMonitorService {
     }
 
     /**
-     * Zone'un son X saatlik doluluk + enerji geçmişi — ZoneDetailPanel ComposedChart için.
-     * Enerji verileri en yakın timestamp eşleştirmesiyle birleştirilir (5 dk tolerans).
+     * Zone'un son X saatlik doluluk geçmişi — ZoneHistoryPanel grafiği için.
+     * Saatlik ortalama döner (max ~24 nokta), X ekseninde gerçek "HH:MM" etiketleri kullanılır.
      */
     @Transactional(readOnly = true)
     public List<OccupancyTimeSeriesPoint> getHistory(Long zoneId, int hours) {
         Instant since = Instant.now().minus(hours, ChronoUnit.HOURS);
-        List<OccupancyReading> readings = occupancyRepo.findTimeSeriesByZoneId(zoneId, since);
+        List<Object[]> rows = occupancyRepo.findHourlyAveragesByZoneId(zoneId, since);
 
-        // Enerji verilerini zaman sıralı Map'e al (saniye → metrik)
-        List<EnvironmentalMetric> metrics = metricRepo.findTimeSeriesByZoneId(zoneId, since);
-        // Epoch saniye → metrik — en yakın eşleştirme için TreeMap kullan
-        java.util.TreeMap<Long, EnvironmentalMetric> metricMap = new java.util.TreeMap<>();
-        for (EnvironmentalMetric m : metrics) {
-            metricMap.put(m.getRecordedAt().getEpochSecond(), m);
-        }
-
-        return readings.stream()
-                .map(r -> {
-                    String time = LocalDateTime.ofInstant(r.getRecordedAt(), ZoneOffset.UTC).format(TIME_FMT);
-                    // En yakın enerji okumasını bul (5 dk = 300 sn tolerans)
-                    Long epochSec = r.getRecordedAt().getEpochSecond();
-                    Long floorKey = metricMap.floorKey(epochSec);
-                    Long ceilKey  = metricMap.ceilingKey(epochSec);
-                    EnvironmentalMetric closest = null;
-                    long bestDiff = 300L;
-                    if (floorKey != null && Math.abs(epochSec - floorKey) < bestDiff) {
-                        bestDiff = Math.abs(epochSec - floorKey);
-                        closest  = metricMap.get(floorKey);
-                    }
-                    if (ceilKey != null && Math.abs(ceilKey - epochSec) < bestDiff) {
-                        closest = metricMap.get(ceilKey);
-                    }
-                    if (closest != null) {
-                        return OccupancyTimeSeriesPoint.full(
-                                time,
-                                r.getDensityPct().doubleValue(),
-                                r.getPeopleCount(),
-                                closest.getEnergyKwh() != null ? closest.getEnergyKwh().doubleValue() : null,
-                                closest.getTemp()      != null ? closest.getTemp().doubleValue()      : null,
-                                closest.getLightingLux()
-                        );
-                    }
-                    return OccupancyTimeSeriesPoint.occupancyOnly(
-                            time, r.getDensityPct().doubleValue(), r.getPeopleCount());
+        return rows.stream()
+                .map(row -> {
+                    String label      = (String) row[0];                      // "HH:MM"
+                    double avgDensity = ((Number) row[1]).doubleValue();
+                    int    avgPeople  = ((Number) row[2]).intValue();
+                    return OccupancyTimeSeriesPoint.occupancyOnly(label, avgDensity, avgPeople);
                 })
                 .collect(Collectors.toList());
     }

@@ -3,5 +3,6 @@ package com.ecoterminal.model.dto;
 public record SpendResponse(
         String rewardTitle,
         int remainingBalance,
-        String tierLevel
+        String tierLevel,
+        String redemptionCode
 ) {}

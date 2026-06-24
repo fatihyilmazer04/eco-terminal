@@ -21,6 +21,14 @@ export const notificationApi = {
   sendManual(payload) {
     return axiosInstance.post('/api/notifications/send', payload)
   },
+  /** DELETE /api/notifications/{id} — tek bildirimi sil */
+  deleteOne(notifId) {
+    return axiosInstance.delete(`/api/notifications/${notifId}`)
+  },
+  /** DELETE /api/notifications/clear-all — tüm bildirimleri sil */
+  clearAll() {
+    return axiosInstance.delete('/api/notifications/clear-all')
+  },
   /** PUT /api/users/fcm-token */
   updateFcmToken(fcmToken) {
     return axiosInstance.put('/api/users/fcm-token', { fcmToken })
